@@ -1,2 +1,2 @@
 (executable
- (name pkulang))
+ (name pkulang) (libraries pkulang))

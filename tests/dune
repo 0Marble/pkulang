@@ -1,0 +1,4 @@
+(test
+ (name tokenizer)
+ (modules tokenizer)
+ (libraries pkulang alcotest))

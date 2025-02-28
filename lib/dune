@@ -1,2 +1,2 @@
-(library (name pkulang))
+(library (name pkulang) (modules tokenizer error))
 
