@@ -3,9 +3,11 @@ open Pkulang
 let () =
   while true do
     try
-      Printf.printf "> " |> read_line |> Tokenizer.tokenize
-      |> Tokenizer.tok_list_to_str |> print_endline
-    with
-    | Error.ErrorAtLocation e -> Error.print_error e
-    | err -> raise err
+      let () = Printf.printf "> " in
+      let src = read_line () in
+      let toks = Tokenizer.tokenize src in
+      let _, root = Parser.parse_expr { src; toks } in
+      print_newline ();
+      Ast.node_to_str root |> print_endline
+    with _ -> ()
   done

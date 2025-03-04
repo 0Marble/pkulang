@@ -1,2 +1,2 @@
-(library (name pkulang) (modules tokenizer error))
+(library (name pkulang) (modules tokenizer error ast parser))
 

@@ -2,3 +2,8 @@
  (name tokenizer)
  (modules tokenizer)
  (libraries pkulang alcotest))
+
+(test
+ (name parse_expr)
+ (modules parse_expr)
+ (libraries pkulang alcotest))

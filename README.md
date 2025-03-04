@@ -2,6 +2,11 @@
 
 ## Running
 ```
-dune exec ./bin/pkulang.exe <file-name>
+dune exec ./bin/pkulang.exe 
+```
+
+## Testing 
+```
+dune test
 ```
 

@@ -10,10 +10,13 @@ type token_kind =
   | TokLessEql
   | TokLp
   | TokRp
-  | TokSemi
-  | TokColon
   | TokLb
   | TokRb
+  | TokLs
+  | TokRs
+  | TokSemi
+  | TokColon
+  | TokComa
   | TokAssign
   | TokEql
   | TokFn
@@ -40,10 +43,13 @@ Hashtbl.add symbols '*' TokMul;;
 Hashtbl.add symbols '/' TokDiv;;
 Hashtbl.add symbols '(' TokLp;;
 Hashtbl.add symbols ')' TokRp;;
+Hashtbl.add symbols '{' TokLb;;
+Hashtbl.add symbols '}' TokRb;;
+Hashtbl.add symbols '[' TokLs;;
+Hashtbl.add symbols ']' TokRs;;
 Hashtbl.add symbols ';' TokSemi;;
 Hashtbl.add symbols ':' TokColon;;
-Hashtbl.add symbols '{' TokLb;;
-Hashtbl.add symbols '}' TokRb
+Hashtbl.add symbols ',' TokComa
 
 let tok_to_str tok =
   match tok.kind with
@@ -51,6 +57,7 @@ let tok_to_str tok =
   | TokIdent -> "Ident(" ^ tok.str ^ ")"
   | TokString -> "String(\"" ^ tok.str ^ "\")"
   | TokAdd -> "Add"
+  | TokMul -> "Mul"
   | TokSub -> "Sub"
   | TokAssign -> "Assign"
   | TokEql -> "Eql"
@@ -61,9 +68,12 @@ let tok_to_str tok =
   | TokRp -> "Rp"
   | TokLb -> "Lb"
   | TokRb -> "Rb"
+  | TokLs -> "Ls"
+  | TokRs -> "Rs"
   | TokFn -> "Fn"
   | TokColon -> "Colon"
   | TokSemi -> "Semi"
+  | TokComa -> "Coma"
   | _ -> "Unimplemented"
 
 let tok_list_to_str toks =
