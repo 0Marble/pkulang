@@ -12,7 +12,9 @@ Hashtbl.add priority TokDiv 200
 let next_tok p =
   match p.toks with
   | t :: ts -> (t, { p with toks = ts })
-  | [] -> Error.fail_at_spot "Unexpected end" p.src (String.length p.src)
+  | [] ->
+      Error.fail_at_spot "Unexpected end" p.src
+        (Location.Spot (String.length p.src))
 
 let peek_tok p = match p.toks with t :: _ -> Some t | [] -> None
 
@@ -26,7 +28,7 @@ let print_expr_situation p stack =
 let rec parse_expr_list p =
   let rec parse_expr_list' p l delim =
     let x, p' = next_tok p in
-    if x.kind = delim then (p', l)
+    if x.kind = delim then (p', l, x.loc)
     else if x.kind == TokComa then parse_expr_list' p' l delim
     else
       let p, e = parse_expr p in
@@ -35,11 +37,13 @@ let rec parse_expr_list p =
   let t, p = next_tok p in
   match t.kind with
   | TokLp ->
-      let p, l = parse_expr_list' p [] TokRp in
-      (p, List.rev l)
+      let l1 = t.loc in
+      let p, l, l2 = parse_expr_list' p [] TokRp in
+      (p, List.rev l, Location.union l1 l2)
   | TokLs ->
-      let p, l = parse_expr_list' p [] TokRs in
-      (p, List.rev l)
+      let l1 = t.loc in
+      let p, l, l2 = parse_expr_list' p [] TokRs in
+      (p, List.rev l, Location.union l1 l2)
   | _ -> Error.fail_at_spot "Expected a list of expressions" p.src t.loc
 
 and parse_expr p =
@@ -57,7 +61,10 @@ and parse_expr p =
           else (p, e)
       | TokSub ->
           let p, e = parse_leaf_expr p in
-          (p, Ast.UnaryOp { op = t; sub = e; loc = t.loc })
+          ( p,
+            Ast.UnaryOp
+              { op = t; sub = e; loc = Location.union t.loc (Ast.node_loc e) }
+          )
       | _ -> Error.fail_at_spot "Invalid leaf expression" p.src t.loc
     in
     let rec parse_postfix p leaf =
@@ -67,11 +74,14 @@ and parse_expr p =
       | Some t -> (
           match t.kind with
           | TokLp ->
-              let p, args = parse_expr_list p in
-              parse_postfix p (Ast.Call { fn = leaf; args; loc = t.loc })
+              let p, args, loc = parse_expr_list p in
+              parse_postfix p
+                (Ast.Call { fn = leaf; args; loc = Location.union t.loc loc })
           | TokLs ->
-              let p, coords = parse_expr_list p in
-              parse_postfix p (Ast.Index { arr = leaf; coords; loc = t.loc })
+              let p, coords, loc = parse_expr_list p in
+              parse_postfix p
+                (Ast.Index
+                   { arr = leaf; coords; loc = Location.union t.loc loc })
           | _ -> (p, leaf))
     in
     parse_postfix p leaf
@@ -82,7 +92,14 @@ and parse_expr p =
     let reduce stack =
       match stack with
       | a :: Ast.BinOp op :: b :: ts ->
-          Ast.BinOp { op with rhs = a; lhs = b } :: ts
+          Ast.BinOp
+            {
+              op with
+              rhs = a;
+              lhs = b;
+              loc = Location.union (Ast.node_loc a) (Ast.node_loc b);
+            }
+          :: ts
       | _ -> failwith "Unreachable? in reduce"
     in
 
@@ -108,11 +125,14 @@ and parse_expr p =
                 0
         | _ -> Error.fail_at_spot "Not a binary expression" p.src t.loc)
     | _, _, 1 ->
-        parse_expr' p'
-          (Ast.BinOp
-             { lhs = Ast.Invalid; rhs = Ast.Invalid; op = t; loc = t.loc }
-          :: stack)
-          0
+        if Hashtbl.find_opt priority t.kind = None then
+          Error.fail_at_spot "Not a binary expression" p.src t.loc
+        else
+          parse_expr' p'
+            (Ast.BinOp
+               { lhs = Ast.Invalid; rhs = Ast.Invalid; op = t; loc = t.loc }
+            :: stack)
+            0
     | _ -> Error.fail_at_spot "Invalid expression" p.src t.loc
   in
   let p, rest = parse_expr' p [] 0 in

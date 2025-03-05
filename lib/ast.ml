@@ -1,12 +1,17 @@
 type node =
-  | BinOp of { lhs : node; rhs : node; op : Tokenizer.token; loc : int }
-  | UnaryOp of { sub : node; op : Tokenizer.token; loc : int }
-  | Call of { fn : node; args : node list; loc : int }
-  | Index of { arr : node; coords : node list; loc : int }
-  | Variable of { name : string; loc : int }
-  | Number of { num : int; loc : int }
-  | LetStmt of { name : string; value : node; loc : int }
-  | Block of { stmts : node list; loc : int }
+  | BinOp of {
+      lhs : node;
+      rhs : node;
+      op : Tokenizer.token;
+      loc : Location.location;
+    }
+  | UnaryOp of { sub : node; op : Tokenizer.token; loc : Location.location }
+  | Call of { fn : node; args : node list; loc : Location.location }
+  | Index of { arr : node; coords : node list; loc : Location.location }
+  | Variable of { name : string; loc : Location.location }
+  | Number of { num : int; loc : Location.location }
+  | LetStmt of { name : string; value : node; loc : Location.location }
+  | Block of { stmts : node list; loc : Location.location }
   | Invalid
 
 let rec node_to_str n =

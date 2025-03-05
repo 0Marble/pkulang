@@ -25,7 +25,7 @@ type token_kind =
   | TokElse
   | TokWhile
 
-type token = { str : string; loc : int; kind : token_kind }
+type token = { str : string; loc : Location.location; kind : token_kind }
 
 let keywords = Hashtbl.create 10;;
 
@@ -100,7 +100,9 @@ let tokenize src : token list =
   let emit_tok kind b =
     {
       b with
-      toks = { kind; loc = b.start; str = cur_str b } :: b.toks;
+      toks =
+        { kind; loc = Location.Range (b.start, b.loc); str = cur_str b }
+        :: b.toks;
       state = 0;
     }
   in
@@ -137,10 +139,11 @@ let tokenize src : token list =
     (* Simple Symbols *)
     | _, 0 -> (
         match Hashtbl.find_opt symbols c with
-        | Some tok -> emit_tok tok (step b)
-        | None -> Error.fail_at_spot "Invalid token" b.src b.loc)
+        | Some tok -> emit_tok tok (step { b with start = b.loc })
+        | None -> Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
+        )
     (* Error*)
-    | _ -> Error.fail_at_spot "Invalid token" b.src b.loc
+    | _ -> Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
   in
 
   b.src ^ " " |> String.fold_left add_char b |> (fun b -> b.toks) |> List.rev
