@@ -7,3 +7,8 @@
  (name parse_expr)
  (modules parse_expr)
  (libraries pkulang alcotest))
+
+(test
+ (name parse_stmts)
+ (modules parse_stmts)
+ (libraries pkulang alcotest))

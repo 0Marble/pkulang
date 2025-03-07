@@ -1,7 +1,13 @@
 open Alcotest
 open Pkulang
 
-let run_tok str = str |> Tokenizer.tokenize |> Tokenizer.tok_list_to_str
+let run_tok str =
+  let toks = str |> Tokenizer.tokenize in
+  match List.rev toks with
+  | e :: ts ->
+      if e.kind = TokEnd then List.rev ts |> Tokenizer.tok_list_to_str
+      else failwith "No end token"
+  | _ -> failwith "No end token"
 
 let ident_checks () =
   check string "ident" "Ident(hello)" (run_tok "hello");

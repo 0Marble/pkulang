@@ -51,6 +51,16 @@ let index () =
   check string "a[i][j]" "(idx (idx (var a) (var i)) (var j))"
     (run_parser "a[i][j];")
 
+let array_literal () =
+  check string "empty" "(array_literal)" (run_parser "[]");
+  check string "[a]" "(array_literal (var a))" (run_parser "[a]");
+  check string "[a,b,c]" "(array_literal (var a) (var b) (var c))"
+    (run_parser "[a,b,c]");
+  check string "nested" "(array_literal (array_literal (var a)))"
+    (run_parser "[[a]]");
+  check string "index" "(idx (array_literal (var a)) (num 0))"
+    (run_parser "[a][0]")
+
 let complicated () =
   let src = "foo(a+b(x,y[i])*(x*z(c,q,w,e)+1))(bar)[1,2,3];" in
   let res = run_parser src in
@@ -72,6 +82,7 @@ let () =
           ("parens", `Quick, parens);
           ("call", `Quick, call);
           ("index", `Quick, index);
+          ("array literal", `Quick, array_literal);
         ] );
       ("complicated", [ ("c1", `Quick, complicated) ]);
     ]

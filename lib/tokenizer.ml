@@ -2,40 +2,58 @@ type token_kind =
   | TokNumber
   | TokIdent
   | TokString
+  (* Expressions *)
   | TokAdd
   | TokSub
   | TokMul
   | TokDiv
   | TokLess
   | TokLessEql
+  | TokAssign
+  | TokEql
+  (* Brackets *)
   | TokLp
   | TokRp
   | TokLb
   | TokRb
   | TokLs
   | TokRs
+  (* Punctuation *)
   | TokSemi
   | TokColon
   | TokComa
-  | TokAssign
-  | TokEql
-  | TokFn
+  | TokDot
+  (* Statements *)
   | TokReturn
+  | TokBreak
+  | TokContinue
   | TokIf
   | TokElse
+  | TokFor
   | TokWhile
+  | TokLet
+  (* Declarations *)
+  | TokPub
+  | TokFn
+  (* special token placed at the end of the token list *)
+  | TokEnd
 
 type token = { str : string; loc : Location.location; kind : token_kind }
 
-let keywords = Hashtbl.create 10;;
+let keywords = Hashtbl.create 20;;
 
 Hashtbl.add keywords "return" TokReturn;;
-Hashtbl.add keywords "fn" TokFn;;
+Hashtbl.add keywords "break" TokBreak;;
+Hashtbl.add keywords "continue" TokContinue;;
+Hashtbl.add keywords "let" TokLet;;
 Hashtbl.add keywords "if" TokIf;;
 Hashtbl.add keywords "else" TokElse;;
-Hashtbl.add keywords "while" TokWhile
+Hashtbl.add keywords "while" TokWhile;;
+Hashtbl.add keywords "for" TokFor;;
+Hashtbl.add keywords "fn" TokFn;;
+Hashtbl.add keywords "pub" TokPub
 
-let symbols = Hashtbl.create 10;;
+let symbols = Hashtbl.create 50;;
 
 Hashtbl.add symbols '+' TokAdd;;
 Hashtbl.add symbols '-' TokSub;;
@@ -49,13 +67,14 @@ Hashtbl.add symbols '[' TokLs;;
 Hashtbl.add symbols ']' TokRs;;
 Hashtbl.add symbols ';' TokSemi;;
 Hashtbl.add symbols ':' TokColon;;
-Hashtbl.add symbols ',' TokComa
+Hashtbl.add symbols ',' TokComa;;
+Hashtbl.add symbols '.' TokDot
 
-let tok_to_str tok =
-  match tok.kind with
-  | TokNumber -> "Number(" ^ tok.str ^ ")"
-  | TokIdent -> "Ident(" ^ tok.str ^ ")"
-  | TokString -> "String(\"" ^ tok.str ^ "\")"
+let tok_kind_to_str tk =
+  match tk with
+  | TokNumber -> "Number"
+  | TokIdent -> "Ident"
+  | TokString -> "String"
   | TokAdd -> "Add"
   | TokMul -> "Mul"
   | TokSub -> "Sub"
@@ -74,7 +93,15 @@ let tok_to_str tok =
   | TokColon -> "Colon"
   | TokSemi -> "Semi"
   | TokComa -> "Coma"
+  | TokEnd -> "End"
   | _ -> "Unimplemented"
+
+let tok_to_str tok =
+  match tok.kind with
+  | TokNumber -> "Number(" ^ tok.str ^ ")"
+  | TokIdent -> "Ident(" ^ tok.str ^ ")"
+  | TokString -> "String(\"" ^ tok.str ^ "\")"
+  | _ -> tok_kind_to_str tok.kind
 
 let tok_list_to_str toks =
   toks |> List.map tok_to_str
@@ -146,4 +173,9 @@ let tokenize src : token list =
     | _ -> Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
   in
 
-  b.src ^ " " |> String.fold_left add_char b |> (fun b -> b.toks) |> List.rev
+  b.src ^ " "
+  |> String.fold_left add_char b
+  |> (fun b -> b.toks)
+  |> (fun x ->
+  { loc = Location.Spot (String.length src); kind = TokEnd; str = "" } :: x)
+  |> List.rev
