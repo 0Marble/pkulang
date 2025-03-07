@@ -8,9 +8,14 @@ Hashtbl.add priority TokAdd 100;;
 Hashtbl.add priority TokSub 100;;
 Hashtbl.add priority TokMul 200;;
 Hashtbl.add priority TokDiv 200;;
-Hashtbl.add priority TokLess 50;;
-Hashtbl.add priority TokEql 10;;
-Hashtbl.add priority TokAssign 0
+Hashtbl.add priority TokLt 50;;
+Hashtbl.add priority TokLe 50;;
+Hashtbl.add priority TokGt 50;;
+Hashtbl.add priority TokGe 50;;
+Hashtbl.add priority TokEq 10;;
+Hashtbl.add priority TokNeq 10;;
+Hashtbl.add priority TokAssign 0;;
+Hashtbl.add priority TokAddAssign 0
 
 let next_tok p =
   match p.toks with
@@ -163,7 +168,7 @@ and parse_term p =
         let t, p = next_tok p in
         if t.kind <> TokRp then Error.fail_at_spot "Unbalanced ')'" p.src t.loc
         else (p, e)
-    | TokSub ->
+    | TokSub | TokNot ->
         let p, e = parse_term p in
         ( p,
           Ast.UnaryOp

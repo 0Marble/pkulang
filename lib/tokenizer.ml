@@ -7,10 +7,18 @@ type token_kind =
   | TokSub
   | TokMul
   | TokDiv
-  | TokLess
-  | TokLessEql
+  | TokLt
+  | TokLe
+  | TokGt
+  | TokGe
   | TokAssign
-  | TokEql
+  | TokAddAssign
+  | TokSubAssign
+  | TokMulAssign
+  | TokDivAssign
+  | TokEq
+  | TokNeq
+  | TokNot
   (* Brackets *)
   | TokLp
   | TokRp
@@ -40,35 +48,41 @@ type token_kind =
 
 type token = { str : string; loc : Location.location; kind : token_kind }
 
-let keywords = Hashtbl.create 20;;
+let token_map = Trie.init ();;
 
-Hashtbl.add keywords "return" TokReturn;;
-Hashtbl.add keywords "break" TokBreak;;
-Hashtbl.add keywords "continue" TokContinue;;
-Hashtbl.add keywords "let" TokLet;;
-Hashtbl.add keywords "if" TokIf;;
-Hashtbl.add keywords "else" TokElse;;
-Hashtbl.add keywords "while" TokWhile;;
-Hashtbl.add keywords "for" TokFor;;
-Hashtbl.add keywords "fn" TokFn;;
-Hashtbl.add keywords "pub" TokPub
-
-let symbols = Hashtbl.create 50;;
-
-Hashtbl.add symbols '+' TokAdd;;
-Hashtbl.add symbols '-' TokSub;;
-Hashtbl.add symbols '*' TokMul;;
-Hashtbl.add symbols '/' TokDiv;;
-Hashtbl.add symbols '(' TokLp;;
-Hashtbl.add symbols ')' TokRp;;
-Hashtbl.add symbols '{' TokLb;;
-Hashtbl.add symbols '}' TokRb;;
-Hashtbl.add symbols '[' TokLs;;
-Hashtbl.add symbols ']' TokRs;;
-Hashtbl.add symbols ';' TokSemi;;
-Hashtbl.add symbols ':' TokColon;;
-Hashtbl.add symbols ',' TokComa;;
-Hashtbl.add symbols '.' TokDot
+Trie.add_word token_map "return" TokReturn;;
+Trie.add_word token_map "break" TokBreak;;
+Trie.add_word token_map "continue" TokContinue;;
+Trie.add_word token_map "let" TokLet;;
+Trie.add_word token_map "if" TokIf;;
+Trie.add_word token_map "else" TokElse;;
+Trie.add_word token_map "while" TokWhile;;
+Trie.add_word token_map "for" TokFor;;
+Trie.add_word token_map "fn" TokFn;;
+Trie.add_word token_map "pub" TokPub;;
+Trie.add_word token_map "+" TokAdd;;
+Trie.add_word token_map "-" TokSub;;
+Trie.add_word token_map "*" TokMul;;
+Trie.add_word token_map "/" TokDiv;;
+Trie.add_word token_map "=" TokAssign;;
+Trie.add_word token_map "+=" TokAddAssign;;
+Trie.add_word token_map "==" TokEq;;
+Trie.add_word token_map "!=" TokEq;;
+Trie.add_word token_map "!" TokNot;;
+Trie.add_word token_map "<" TokLt;;
+Trie.add_word token_map "<=" TokLe;;
+Trie.add_word token_map ">" TokGt;;
+Trie.add_word token_map ">=" TokGe;;
+Trie.add_word token_map "(" TokLp;;
+Trie.add_word token_map ")" TokRp;;
+Trie.add_word token_map "{" TokLb;;
+Trie.add_word token_map "}" TokRb;;
+Trie.add_word token_map "[" TokLs;;
+Trie.add_word token_map "]" TokRs;;
+Trie.add_word token_map ";" TokSemi;;
+Trie.add_word token_map ":" TokColon;;
+Trie.add_word token_map "," TokComa;;
+Trie.add_word token_map "." TokDot
 
 let tok_kind_to_str tk =
   match tk with
@@ -79,10 +93,10 @@ let tok_kind_to_str tk =
   | TokMul -> "Mul"
   | TokSub -> "Sub"
   | TokAssign -> "Assign"
-  | TokEql -> "Eql"
+  | TokEq -> "Eq"
   | TokIf -> "If"
   | TokReturn -> "Return"
-  | TokLess -> "Less"
+  | TokLt -> "Lt"
   | TokLp -> "Lp"
   | TokRp -> "Rp"
   | TokLb -> "Lb"
@@ -117,10 +131,20 @@ type builder = {
   start : int;
   loc : int;
   toks : token list;
+  finder : token_kind Trie.finder_type;
 }
 
 let tokenize src : token list =
-  let b : builder = { src; loc = 0; start = 0; state = 0; toks = [] } in
+  let b : builder =
+    {
+      src;
+      loc = 0;
+      start = 0;
+      state = 0;
+      toks = [];
+      finder = Trie.finder token_map;
+    }
+  in
 
   let cur_str b = String.sub b.src b.start (b.loc - b.start) in
 
@@ -145,7 +169,7 @@ let tokenize src : token list =
         step { b with start = b.loc; state = 1 }
     | ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9'), 1 -> step b
     | _, 1 -> (
-        match Hashtbl.find_opt keywords (cur_str b) with
+        match Trie.get_word token_map (cur_str b) with
         | Some kw -> add_char (emit_tok kw b) c
         | None -> add_char (emit_tok TokIdent b) c)
     (* Numbers *)
@@ -156,19 +180,19 @@ let tokenize src : token list =
     | '\"', 0 -> step { b with start = b.loc + 1; state = 5 }
     | '\"', 5 -> step (emit_tok TokString b)
     | _, 5 -> step b
-    (* Compound Symbols *)
-    | '=', 0 -> step { b with start = b.loc; state = 3 }
-    | '=', 3 -> emit_tok TokEql (step b)
-    | _, 3 -> add_char (emit_tok TokAssign b) c
-    | '<', 0 -> step { b with start = b.loc; state = 4 }
-    | '=', 4 -> emit_tok TokLessEql (step b)
-    | _, 4 -> add_char (emit_tok TokLess b) c
-    (* Simple Symbols *)
-    | _, 0 -> (
-        match Hashtbl.find_opt symbols c with
-        | Some tok -> emit_tok tok (step { b with start = b.loc })
-        | None -> Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
-        )
+    (* Symbols *)
+    | _, 0 ->
+        add_char
+          { b with finder = Trie.finder token_map; start = b.loc; state = 6 }
+          c
+    | c, 6 -> (
+        match Trie.push b.finder c with
+        | Some next -> step { b with finder = next }
+        | None -> (
+            match Trie.get b.finder with
+            | Some t -> add_char (emit_tok t b) c
+            | None ->
+                Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)))
     (* Error*)
     | _ -> Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
   in

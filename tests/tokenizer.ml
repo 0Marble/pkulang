@@ -26,7 +26,7 @@ let symbol_checks () =
   check string "symbol" "Add" (run_tok "+");
   check string "many symbols" "Add,Add,Add" (run_tok "+ + +");
   check string "symbols together" "Add,Add,Add" (run_tok "+++");
-  check string "assign vs eql" "Assign,Eql" (run_tok "= ==")
+  check string "assign vs eql" "Assign,Eq" (run_tok "= ==")
 
 let strings_check () =
   check string "string" "String(\"hello\")" (run_tok "\"hello\"");
@@ -45,7 +45,7 @@ let fib_example () =
     }|}
   in
   check string "fib"
-    "Fn,Ident(fib),Lp,Ident(n),Colon,Ident(int),Rp,Ident(int),Lb,If,Lp,Ident(n),Less,Number(2),Rp,Return,Ident(n),Semi,Return,Ident(fib),Lp,Ident(n),Sub,Number(1),Rp,Add,Ident(fib),Lp,Ident(n),Sub,Number(2),Rp,Semi,Rb"
+    "Fn,Ident(fib),Lp,Ident(n),Colon,Ident(int),Rp,Ident(int),Lb,If,Lp,Ident(n),Lt,Number(2),Rp,Return,Ident(n),Semi,Return,Ident(fib),Lp,Ident(n),Sub,Number(1),Rp,Add,Ident(fib),Lp,Ident(n),Sub,Number(2),Rp,Semi,Rb"
     (run_tok src)
 
 let () =
