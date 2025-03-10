@@ -43,27 +43,23 @@ let block_stmt () =
     (run_parser "{let x:int = 10; x=20;}")
 
 let if_stmt () =
-  check string "if" "(if (var x) (return _) _)" (run_parser "if (x) return;");
+  check string "if" "(if (var x) (block) _)" (run_parser "if (x) {}");
   check string "if else"
-    "(if (var x) (block (return (num 10))) (return (num 20)))"
-    (run_parser "if (x) {return 10;} else return 20;");
-  check string "if in block" "(block (if (var x) (return _) _) (break _ _))"
-    (run_parser "{if(x)return;break;}");
-  (* Failing test *)
-  check_raises "dangling else" (Error.Error Error.DanglingElse) (fun () ->
-      let _ = run_parser "if (x) if (y) a else b" in
-      ())
+    "(if (var x) (block (return (num 10))) (block (return (num 20))))"
+    (run_parser "if (x) {return 10;} else {return 20;}");
+  check string "if in block" "(block (if (var x) (block) _) (break _ _))"
+    (run_parser "{if(x){}break;}")
 
 let while_loop () =
   check string "normal" "(while (var x) (block) _)" (run_parser "while(x){}");
-  check string "with else" "(while (var x) (block) (break _ _))"
-    (run_parser "while(x){}else break;")
+  check string "with else" "(while (var x) (block) (block))"
+    (run_parser "while(x){}else{}")
 
 let for_loop () =
   check string "normal" "(for x (var arr) (block) _)"
     (run_parser "for (x : arr) {}");
-  check string "with else" "(for x (var arr) (block) (break _ _))"
-    (run_parser "for (x : arr) {} else break;")
+  check string "with else" "(for x (var arr) (block) (block))"
+    (run_parser "for (x : arr) {} else {}")
 
 let labeled () =
   check string "while" "(label foo (while (var x) (block) _))"

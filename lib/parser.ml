@@ -230,13 +230,19 @@ and parse_term p =
         let p, body = parse_term p in
         let p, finally = if_tok TokElse (fun _ p -> parse_term p) p in
         let () =
-          if finally <> None then
-            match body with
-            | Block _ -> ()
-            | x ->
-                Error.fail_at_spot
-                  "While body has to be a block if 'else' is given" p.src
-                  (Ast.node_loc x) Error.DanglingElse
+          match body with
+          | Block _ -> ()
+          | x ->
+              Error.fail_at_spot "Block required as a while loop body" p.src
+                (Ast.node_loc x) Error.Unknown
+        in
+        let () =
+          match finally with
+          | None -> ()
+          | Some (Block _) -> ()
+          | Some x ->
+              Error.fail_at_spot "Block required as a while loop body" p.src
+                (Ast.node_loc x) Error.Unknown
         in
         ( p,
           Ast.WhileLoop
@@ -249,13 +255,19 @@ and parse_term p =
         let p, if_true = parse_term p in
         let p, if_false = if_tok TokElse (fun _ p -> parse_term p) p in
         let () =
-          if if_false <> None then
-            match if_true with
-            | Block _ -> ()
-            | x ->
-                Error.fail_at_spot
-                  "In an if-else statement, the body has to be a block" p.src
-                  (Ast.node_loc x) Error.DanglingElse
+          match if_true with
+          | Block _ -> ()
+          | x ->
+              Error.fail_at_spot "Block required as a body of if" p.src
+                (Ast.node_loc x) Error.Unknown
+        in
+        let () =
+          match if_false with
+          | None -> ()
+          | Some (Block _) -> ()
+          | Some x ->
+              Error.fail_at_spot "Block required as a body of if" p.src
+                (Ast.node_loc x) Error.Unknown
         in
         ( p,
           Ast.IfStmt
@@ -271,12 +283,19 @@ and parse_term p =
         let p, body = parse_term p in
         let p, finally = if_tok TokElse (fun _ p -> parse_term p) p in
         let () =
-          if finally <> None then
-            match body with
-            | Block _ -> ()
-            | x ->
-                Error.fail_at_spot "If 'else' is given, body has to be a block"
-                  p.src (Ast.node_loc x) Error.DanglingElse
+          match body with
+          | Block _ -> ()
+          | x ->
+              Error.fail_at_spot "Body of a loop should be a block" p.src
+                (Ast.node_loc x) Error.Unknown
+        in
+        let () =
+          match finally with
+          | None -> ()
+          | Some (Block _) -> ()
+          | Some x ->
+              Error.fail_at_spot "Body of a loop should be a block" p.src
+                (Ast.node_loc x) Error.Unknown
         in
         ( p,
           Ast.ForLoop
