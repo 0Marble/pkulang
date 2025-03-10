@@ -43,6 +43,9 @@ type token_kind =
   (* Declarations *)
   | TokPub
   | TokFn
+  | TokClass
+  | TokInterface
+  | TokType
   (* special token placed at the end of the token list *)
   | TokEnd
 
@@ -60,6 +63,9 @@ Trie.add_word token_map "while" TokWhile;;
 Trie.add_word token_map "for" TokFor;;
 Trie.add_word token_map "fn" TokFn;;
 Trie.add_word token_map "pub" TokPub;;
+Trie.add_word token_map "class" TokClass;;
+Trie.add_word token_map "interface" TokInterface;;
+Trie.add_word token_map "type" TokType;;
 Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;
 Trie.add_word token_map "*" TokMul;;
@@ -67,7 +73,7 @@ Trie.add_word token_map "/" TokDiv;;
 Trie.add_word token_map "=" TokAssign;;
 Trie.add_word token_map "+=" TokAddAssign;;
 Trie.add_word token_map "==" TokEq;;
-Trie.add_word token_map "!=" TokEq;;
+Trie.add_word token_map "!=" TokNeq;;
 Trie.add_word token_map "!" TokNot;;
 Trie.add_word token_map "<" TokLt;;
 Trie.add_word token_map "<=" TokLe;;
@@ -94,6 +100,7 @@ let tok_kind_to_str tk =
   | TokSub -> "Sub"
   | TokAssign -> "Assign"
   | TokEq -> "Eq"
+  | TokNeq -> "Neq"
   | TokIf -> "If"
   | TokReturn -> "Return"
   | TokLt -> "Lt"

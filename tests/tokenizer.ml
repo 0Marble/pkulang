@@ -26,7 +26,8 @@ let symbol_checks () =
   check string "symbol" "Add" (run_tok "+");
   check string "many symbols" "Add,Add,Add" (run_tok "+ + +");
   check string "symbols together" "Add,Add,Add" (run_tok "+++");
-  check string "assign vs eql" "Assign,Eq" (run_tok "= ==")
+  check string "assign vs eql" "Assign,Eq" (run_tok "= ==");
+  check string "eq vs neq" "Eq,Neq" (run_tok "== !=")
 
 let strings_check () =
   check string "string" "String(\"hello\")" (run_tok "\"hello\"");
