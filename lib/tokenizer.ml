@@ -192,9 +192,12 @@ let tokenize src : token list =
             match Trie.get b.finder with
             | Some t -> add_char (emit_tok t b) c
             | None ->
-                Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)))
+                Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
+                  Error.Unknown))
     (* Error*)
-    | _ -> Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
+    | _ ->
+        Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
+          Error.Unknown
   in
 
   b.src ^ " "

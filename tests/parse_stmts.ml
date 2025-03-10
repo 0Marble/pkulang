@@ -7,7 +7,11 @@ let run_parser s =
 
 let let_stmt () =
   check string "let" "(let x (type int) (num 10))"
-    (run_parser "let x: int = 10;")
+    (run_parser "let x: int = 10;");
+  check_raises "not an expression" (Error.Error Error.InvalidExpression)
+    (fun () ->
+      let _ = run_parser "10+let x:int = 20;" in
+      ())
 
 let return_stmt () =
   check string "return with value" "(return (var x))" (run_parser "return x;");
@@ -40,12 +44,15 @@ let block_stmt () =
 
 let if_stmt () =
   check string "if" "(if (var x) (return _) _)" (run_parser "if (x) return;");
-  check string "if else" "(if (var x) (return (num 10)) (return (num 20)))"
-    (run_parser "if (x) return 10; else return 20;");
+  check string "if else"
+    "(if (var x) (block (return (num 10))) (return (num 20)))"
+    (run_parser "if (x) {return 10;} else return 20;");
   check string "if in block" "(block (if (var x) (return _) _) (break _ _))"
     (run_parser "{if(x)return;break;}");
-  check string "dangling else" "(if (var x) (if (var y) (var a) (var b)) _)"
-    (run_parser "if (x) if (y) a else b")
+  (* Failing test *)
+  check_raises "dangling else" (Error.Error Error.DanglingElse) (fun () ->
+      let _ = run_parser "if (x) if (y) a else b" in
+      ())
 
 let while_loop () =
   check string "normal" "(while (var x) (block) _)" (run_parser "while(x){}");

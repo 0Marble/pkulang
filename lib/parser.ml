@@ -23,6 +23,7 @@ let next_tok p =
   | [] ->
       Error.fail_at_spot "Unexpected end" p.src
         (Location.Spot (String.length p.src))
+        Error.UnexpectedEnd
 
 let peek_tok p = match p.toks with t :: _ -> Some t | [] -> None
 
@@ -33,7 +34,7 @@ let eat_tok t p =
     Error.fail_at_spot
       (Printf.sprintf "Unexpected token %s, expected %s" (tok_to_str next)
          (tok_kind_to_str t))
-      p.src next.loc
+      p.src next.loc Error.Unknown
 
 let map_tok t f p =
   let next, p = next_tok p in
@@ -42,7 +43,7 @@ let map_tok t f p =
     Error.fail_at_spot
       (Printf.sprintf "Unexpected token %s, expected %s" (tok_to_str next)
          (tok_kind_to_str t))
-      p.src next.loc
+      p.src next.loc Error.Unknown
 
 let if_tok t f p =
   let next, p' = next_tok p in
@@ -93,7 +94,9 @@ let rec parse_expr_list p =
       let l1 = t.loc in
       let p, l, l2 = parse_expr_list' p [] TokRs in
       (p, List.rev l, Location.union l1 l2)
-  | _ -> Error.fail_at_spot "Expected a list of expressions" p.src t.loc
+  | _ ->
+      Error.fail_at_spot "Expected a list of expressions" p.src t.loc
+        Error.Unknown
 
 and parse_expr p =
   let rec parse_expr' p stack stage =
@@ -101,6 +104,20 @@ and parse_expr p =
     let reduce stack =
       match stack with
       | a :: Ast.BinOp op :: b :: ts ->
+          let () =
+            match a with
+            | LetStmt _ | Function _ ->
+                Error.fail_at_spot "Not an expression" p.src (Ast.node_loc a)
+                  Error.InvalidExpression
+            | _ -> ()
+          in
+          let () =
+            match b with
+            | LetStmt _ | Function _ ->
+                Error.fail_at_spot "Not an expression" p.src (Ast.node_loc b)
+                  Error.InvalidExpression
+            | _ -> ()
+          in
           Ast.BinOp
             {
               op with
@@ -132,22 +149,28 @@ and parse_expr p =
                    { lhs = Ast.Invalid; rhs = Ast.Invalid; op = t; loc = t.loc }
                 :: stack)
                 0
-        | _ -> Error.fail_at_spot "Not a binary expression" p.src t.loc)
+        | _ ->
+            Error.fail_at_spot "Not a binary expression" p.src t.loc
+              Error.InvalidExpression)
     | _, _, 1 ->
         if Hashtbl.find_opt priority t.kind = None then
           Error.fail_at_spot "Not a binary expression" p.src t.loc
+            Error.InvalidExpression
         else
           parse_expr' p'
             (Ast.BinOp
                { lhs = Ast.Invalid; rhs = Ast.Invalid; op = t; loc = t.loc }
             :: stack)
             0
-    | _ -> Error.fail_at_spot "Invalid expression" p.src t.loc
+    | _ ->
+        Error.fail_at_spot "Invalid expression" p.src t.loc
+          Error.InvalidExpression
   in
   let p, rest = parse_expr' p [] 0 in
   match rest with
   | t :: _ :: _ ->
       Error.fail_at_spot "Unfinished expression" p.src (Ast.node_loc t)
+        Error.InvalidExpression
   | [ t ] -> (p, t)
   | _ -> failwith "Unreachable? in parse_expr with empty stack as result"
 
@@ -166,7 +189,9 @@ and parse_term p =
     | TokLp ->
         let p, e = parse_expr p in
         let t, p = next_tok p in
-        if t.kind <> TokRp then Error.fail_at_spot "Unbalanced ')'" p.src t.loc
+        if t.kind <> TokRp then
+          Error.fail_at_spot "Unbalanced ')'" p.src t.loc
+            Error.UnbalancedBrackets
         else (p, e)
     | TokSub | TokNot ->
         let p, e = parse_term p in
@@ -198,6 +223,15 @@ and parse_term p =
         let p = eat_tok TokRp p in
         let p, body = parse_term p in
         let p, finally = if_tok TokElse (fun _ p -> parse_term p) p in
+        let () =
+          if finally <> None then
+            match body with
+            | Block _ -> ()
+            | x ->
+                Error.fail_at_spot
+                  "While body has to be a block if 'else' is given" p.src
+                  (Ast.node_loc x) Error.DanglingElse
+        in
         ( p,
           Ast.WhileLoop
             { cond; body; finally; loc = Location.union start (cur_loc p) } )
@@ -208,6 +242,15 @@ and parse_term p =
         let p = eat_tok TokRp p in
         let p, if_true = parse_term p in
         let p, if_false = if_tok TokElse (fun _ p -> parse_term p) p in
+        let () =
+          if if_false <> None then
+            match if_true with
+            | Block _ -> ()
+            | x ->
+                Error.fail_at_spot
+                  "In an if-else statement, the body has to be a block" p.src
+                  (Ast.node_loc x) Error.DanglingElse
+        in
         ( p,
           Ast.IfStmt
             { cond; if_true; if_false; loc = Location.union start (cur_loc p) }
@@ -221,6 +264,14 @@ and parse_term p =
         let p = eat_tok TokRp p in
         let p, body = parse_term p in
         let p, finally = if_tok TokElse (fun _ p -> parse_term p) p in
+        let () =
+          if finally <> None then
+            match body with
+            | Block _ -> ()
+            | x ->
+                Error.fail_at_spot "If 'else' is given, body has to be a block"
+                  p.src (Ast.node_loc x) Error.DanglingElse
+        in
         ( p,
           Ast.ForLoop
             {
@@ -287,7 +338,9 @@ and parse_term p =
               let p, typ = parse_type p in
               let p, rest = parse_args p in
               (p, Ast.FunctionArg { name; typ; loc = start } :: rest)
-          | _ -> Error.fail_at_spot "Expected an argument" p.src cur.loc
+          | _ ->
+              Error.fail_at_spot "Expected an argument" p.src cur.loc
+                Error.Unknown
         in
         let p, args = parse_args p in
         let p = eat_tok TokRp p in
@@ -305,7 +358,7 @@ and parse_term p =
     | TokPub ->
         let p, decl = parse_term p in
         (p, Ast.PubDecl { decl; loc = t.loc })
-    | _ -> Error.fail_at_spot "Invalid term" p.src t.loc
+    | _ -> Error.fail_at_spot "Invalid term" p.src t.loc Error.Unknown
   in
   let rec parse_postfix p leaf =
     let t, p' = next_tok p in
@@ -341,7 +394,7 @@ and parse_type p =
         let p = eat_tok TokRs p in
         (p, Ast.ArrayType { elem; loc = Location.union start (cur_loc p) })
     | TokIdent -> (p, Ast.NamedType { name = cur.str; loc = cur.loc })
-    | _ -> Error.fail_at_spot "Invalid type" p.src cur.loc
+    | _ -> Error.fail_at_spot "Invalid type" p.src cur.loc Error.Unknown
   in
   let rec parse_type_suffix p prev : parser_state * Ast.node =
     let next, p' = next_tok p in
