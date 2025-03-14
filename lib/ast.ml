@@ -13,6 +13,8 @@ type node =
   | Number of { num : int; loc : Location.location }
   | String of { str : string; loc : Location.location }
   | ArrayLiteral of { elems : node list; loc : Location.location }
+  | NewExpr of { typ : node; fields : node list; loc : Location.location }
+  | FieldLiteral of { name : string; value : node; loc : Location.location }
   (* Statements *)
   | LabeledStmt of { label : string; stmt : node; loc : Location.location }
   | LetStmt of {
@@ -118,6 +120,16 @@ let rec node_to_str n =
           s x.elems
       in
       Printf.sprintf "%s)" s
+  | NewExpr x ->
+      let s = Printf.sprintf "(new %s (fields" (node_to_str x.typ) in
+      let s =
+        List.fold_left
+          (fun acc s -> Printf.sprintf "%s %s" acc (node_to_str s))
+          s x.fields
+      in
+      Printf.sprintf "%s))" s
+  | FieldLiteral x ->
+      Printf.sprintf "(field_literal %s %s)" x.name (node_to_str x.value)
   | LabeledStmt x -> Printf.sprintf "(label %s %s)" x.label (node_to_str x.stmt)
   | LetStmt x ->
       Printf.sprintf "(let %s %s %s)" x.name (node_to_str x.typ)
@@ -196,6 +208,8 @@ let node_loc n =
   | Index x -> x.loc
   | Variable x -> x.loc
   | Number x -> x.loc
+  | NewExpr x -> x.loc
+  | FieldLiteral x -> x.loc
   | LetStmt x -> x.loc
   | Block x -> x.loc
   | IfStmt x -> x.loc

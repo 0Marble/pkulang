@@ -200,6 +200,32 @@ and parse_term p =
         ( p,
           Ast.UnaryOp
             { op = t; sub = e; loc = Location.union t.loc (Ast.node_loc e) } )
+    | TokNew ->
+        let loc = t.loc in
+        let p, typ = parse_type p in
+        let p = eat_tok TokLb p in
+        let rec parse_fields p =
+          let peek, _ = next_tok p in
+          if peek.kind == TokRb then (p, [])
+          else
+            let p, (name, loc) =
+              map_tok TokIdent (fun t _ -> (t.str, t.loc)) p
+            in
+            let p = eat_tok TokColon p in
+            let p, value = parse_expr p in
+            let next, p' = next_tok p in
+            match next.kind with
+            | TokRb -> (p, [ Ast.FieldLiteral { loc; name; value } ])
+            | TokComa ->
+                let p, rest = parse_fields p' in
+                (p, Ast.FieldLiteral { loc; name; value } :: rest)
+            | _ ->
+                Error.fail_at_spot "Expected a coma" p.src next.loc
+                  Error.Unknown
+        in
+        let p, fields = parse_fields p in
+        let p = eat_tok TokRb p in
+        (p, Ast.NewExpr { loc; typ; fields })
     | TokColon ->
         let start = t.loc in
         let p, label = map_tok TokIdent (fun t _ -> t.str) p in
