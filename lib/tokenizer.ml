@@ -20,6 +20,7 @@ type token_kind =
   | TokEq
   | TokNeq
   | TokNot
+  | TokAmp
   (* Brackets *)
   | TokLp
   | TokRp
@@ -88,7 +89,8 @@ Trie.add_word token_map "]" TokRs;;
 Trie.add_word token_map ";" TokSemi;;
 Trie.add_word token_map ":" TokColon;;
 Trie.add_word token_map "," TokComa;;
-Trie.add_word token_map "." TokDot
+Trie.add_word token_map "." TokDot;;
+Trie.add_word token_map "&" TokAmp
 
 let tok_kind_to_str tk =
   match tk with
@@ -98,6 +100,7 @@ let tok_kind_to_str tk =
   | TokAdd -> "Add"
   | TokMul -> "Mul"
   | TokSub -> "Sub"
+  | TokAmp -> "Amp"
   | TokAssign -> "Assign"
   | TokEq -> "Eq"
   | TokNeq -> "Neq"

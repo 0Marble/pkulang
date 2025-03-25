@@ -180,7 +180,7 @@ and parse_term p =
           Error.fail_at_spot "Unbalanced ')'" p.src t.loc
             Error.UnbalancedBrackets
         else (p, e)
-    | TokSub | TokNot ->
+    | TokSub | TokNot | TokAmp | TokMul ->
         let p, e = parse_term p in
         ( p,
           Ast.UnaryOp
@@ -241,12 +241,22 @@ and parse_type p =
   let parse_type_prefix p =
     let cur, p = next_tok p in
     match cur.kind with
-    | TokLs ->
+    | TokLs -> (
         let start = cur.loc in
         let p, elem = parse_type p in
+        let p, size = if_tok TokSemi (fun _ p -> parse_expr p) p in
         let p = eat_tok TokRs p in
-        (p, Ast.ArrayType { elem; loc = Location.union start (cur_loc p) })
+        match size with
+        | None ->
+            (p, Ast.SliceType { elem; loc = Location.union start (cur_loc p) })
+        | Some size ->
+            ( p,
+              Ast.ArrayType
+                { elem; size; loc = Location.union start (cur_loc p) } ))
     | TokIdent -> (p, Ast.NamedType { name = cur.str; loc = cur.loc })
+    | TokAmp ->
+        let p, sub = parse_type p in
+        (p, Ast.PtrType { sub; loc = cur.loc })
     | _ -> Error.fail_at_spot "Invalid type" p.src cur.loc Error.Unknown
   in
   let rec parse_type_suffix p prev : parser_state * Ast.node =

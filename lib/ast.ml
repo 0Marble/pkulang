@@ -52,8 +52,10 @@ type node =
   | Continue of { label : string option; loc : Location.location }
   (* Types *)
   | NamedType of { name : string; loc : Location.location }
-  | ArrayType of { elem : node; loc : Location.location }
+  | ArrayType of { elem : node; size : node; loc : Location.location }
+  | SliceType of { elem : node; loc : Location.location }
   | DotType of { parent : node; child : string; loc : Location.location }
+  | PtrType of { sub : node; loc : Location.location }
   (* Decls *)
   | Function of {
       name : string;
@@ -153,9 +155,12 @@ let rec node_to_str n =
   | Continue x ->
       Printf.sprintf "(continue %s)" (x.label |> Option.value ~default:"_")
   | NamedType x -> Printf.sprintf "(type %s)" x.name
-  | ArrayType x -> Printf.sprintf "(array %s)" (node_to_str x.elem)
+  | ArrayType x ->
+      Printf.sprintf "(array %s %s)" (node_to_str x.elem) (node_to_str x.size)
+  | SliceType x -> Printf.sprintf "(slice %s)" (node_to_str x.elem)
   | DotType x ->
       Printf.sprintf "(dot_type %s %s)" (node_to_str x.parent) x.child
+  | PtrType x -> Printf.sprintf "(ptr_type %s)" (node_to_str x.sub)
   | Function x ->
       let s = Printf.sprintf "(fn %s" x.name in
       let s =
@@ -201,6 +206,8 @@ let node_loc n =
   | Continue x -> x.loc
   | NamedType x -> x.loc
   | ArrayType x -> x.loc
+  | SliceType x -> x.loc
+  | PtrType x -> x.loc
   | Function x -> x.loc
   | FunctionArg x -> x.loc
   | DotExpr x -> x.loc

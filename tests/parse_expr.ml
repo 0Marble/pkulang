@@ -24,7 +24,10 @@ let prefix () =
   check string "-a-b" "(bin Sub (unary Sub (var a)) (var b))"
     (run_parser "-a-b;");
   check string "a--b" "(bin Sub (var a) (unary Sub (var b)))"
-    (run_parser "a--b;")
+    (run_parser "a--b;");
+  check string "&a" "(unary Amp (var a))" (run_parser "&a");
+  check string "*a" "(unary Mul (var a))" (run_parser "*a");
+  check string "*a" "(bin Mul (var a) (unary Mul (var a)))" (run_parser "a**a")
 
 let parens () =
   check string "(a)" "(var a)" (run_parser "(a);");
