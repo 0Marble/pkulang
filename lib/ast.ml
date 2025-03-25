@@ -1,4 +1,5 @@
 type node =
+  | Root of { stmts : node list; loc : Location.location }
   | BinOp of {
       lhs : node;
       rhs : node;
@@ -13,8 +14,12 @@ type node =
   | Number of { num : int; loc : Location.location }
   | String of { str : string; loc : Location.location }
   | ArrayLiteral of { elems : node list; loc : Location.location }
-  | NewExpr of { typ : node; fields : node list; loc : Location.location }
+  | New of { typ : node; fields : node list; loc : Location.location }
   | FieldLiteral of { name : string; value : node; loc : Location.location }
+  (* Coroutines *)
+  | Yield of { value : node option; loc : Location.location }
+  | Resume of { coroutine : node; value : node option; loc : Location.location }
+  | Coroutine of { fn : node; loc : Location.location }
   (* Statements *)
   | LabeledStmt of { label : string; stmt : node; loc : Location.location }
   | LetStmt of {
@@ -52,8 +57,10 @@ type node =
   | Continue of { label : string option; loc : Location.location }
   (* Types *)
   | NamedType of { name : string; loc : Location.location }
-  | ArrayType of { elem : node; loc : Location.location }
+  | ArrayType of { elem : node; size : node; loc : Location.location }
+  | SliceType of { elem : node; loc : Location.location }
   | DotType of { parent : node; child : string; loc : Location.location }
+  | PtrType of { sub : node; loc : Location.location }
   (* Decls *)
   | Function of {
       name : string;
@@ -70,24 +77,19 @@ type node =
       value : node option;
       loc : Location.location;
     }
-  | Class of {
-      name : string;
-      decls : node list;
-      impl : string list;
-      loc : Location.location;
-    }
-  | Interface of {
-      name : string;
-      decls : node list;
-      impl : string list;
-      loc : Location.location;
-    }
+  | Struct of { name : string; decls : node list; loc : Location.location }
   | TypeAlias of { name : string; typ : node; loc : Location.location }
   (* used as a placeholder for when an error occurs *)
   | Invalid
 
 let rec node_to_str n =
   match n with
+  | Root x ->
+      Printf.sprintf "(root (stmts%s))"
+        (x.stmts
+        |> List.fold_left
+             (fun acc stmt -> Printf.sprintf "%s %s" acc (node_to_str stmt))
+             "")
   | BinOp x ->
       Printf.sprintf "(bin %s %s %s)"
         (Tokenizer.tok_to_str x.op)
@@ -120,7 +122,7 @@ let rec node_to_str n =
           s x.elems
       in
       Printf.sprintf "%s)" s
-  | NewExpr x ->
+  | New x ->
       let s = Printf.sprintf "(new %s (fields" (node_to_str x.typ) in
       let s =
         List.fold_left
@@ -130,6 +132,13 @@ let rec node_to_str n =
       Printf.sprintf "%s))" s
   | FieldLiteral x ->
       Printf.sprintf "(field_literal %s %s)" x.name (node_to_str x.value)
+  | Yield x ->
+      Printf.sprintf "(yield %s)"
+        (x.value |> Option.map node_to_str |> Option.value ~default:"_")
+  | Resume x ->
+      Printf.sprintf "(resume %s %s)" (node_to_str x.coroutine)
+        (x.value |> Option.map node_to_str |> Option.value ~default:"_")
+  | Coroutine x -> Printf.sprintf "(coroutine %s)" (node_to_str x.fn)
   | LabeledStmt x -> Printf.sprintf "(label %s %s)" x.label (node_to_str x.stmt)
   | LetStmt x ->
       Printf.sprintf "(let %s %s %s)" x.name (node_to_str x.typ)
@@ -164,9 +173,12 @@ let rec node_to_str n =
   | Continue x ->
       Printf.sprintf "(continue %s)" (x.label |> Option.value ~default:"_")
   | NamedType x -> Printf.sprintf "(type %s)" x.name
-  | ArrayType x -> Printf.sprintf "(array %s)" (node_to_str x.elem)
+  | ArrayType x ->
+      Printf.sprintf "(array %s %s)" (node_to_str x.elem) (node_to_str x.size)
+  | SliceType x -> Printf.sprintf "(slice %s)" (node_to_str x.elem)
   | DotType x ->
       Printf.sprintf "(dot_type %s %s)" (node_to_str x.parent) x.child
+  | PtrType x -> Printf.sprintf "(ptr_type %s)" (node_to_str x.sub)
   | Function x ->
       let s = Printf.sprintf "(fn %s" x.name in
       let s =
@@ -182,34 +194,30 @@ let rec node_to_str n =
         (x.value
         |> Option.map (fun n -> node_to_str n)
         |> Option.value ~default:"_")
-  | Class x ->
-      Printf.sprintf "(class %s (impl%s) (decls%s))" x.name
-        (x.impl |> List.fold_left (fun acc s -> Printf.sprintf "%s %s" acc s) "")
+  | Struct x ->
+      Printf.sprintf "%s)"
         (x.decls
         |> List.fold_left
              (fun acc n -> Printf.sprintf "%s %s" acc (node_to_str n))
-             "")
-  | Interface x ->
-      Printf.sprintf "(interface %s (impl%s) (decls%s))" x.name
-        (x.impl |> List.fold_left (fun acc s -> Printf.sprintf "%s %s" acc s) "")
-        (x.decls
-        |> List.fold_left
-             (fun acc n -> Printf.sprintf "%s %s" acc (node_to_str n))
-             "")
+             (Printf.sprintf "(struct %s" x.name))
   | TypeAlias x -> Printf.sprintf "(alias %s %s)" x.name (node_to_str x.typ)
   | Invalid -> "?"
 (* | _ -> "Unimplemented" *)
 
 let node_loc n =
   match n with
+  | Root x -> x.loc
   | BinOp x -> x.loc
   | UnaryOp x -> x.loc
   | Call x -> x.loc
   | Index x -> x.loc
   | Variable x -> x.loc
   | Number x -> x.loc
-  | NewExpr x -> x.loc
+  | New x -> x.loc
   | FieldLiteral x -> x.loc
+  | Yield x -> x.loc
+  | Resume x -> x.loc
+  | Coroutine x -> x.loc
   | LetStmt x -> x.loc
   | Block x -> x.loc
   | IfStmt x -> x.loc
@@ -220,6 +228,8 @@ let node_loc n =
   | Continue x -> x.loc
   | NamedType x -> x.loc
   | ArrayType x -> x.loc
+  | SliceType x -> x.loc
+  | PtrType x -> x.loc
   | Function x -> x.loc
   | FunctionArg x -> x.loc
   | DotExpr x -> x.loc
@@ -228,32 +238,7 @@ let node_loc n =
   | LabeledStmt x -> x.loc
   | DotType x -> x.loc
   | Field x -> x.loc
-  | Class x -> x.loc
-  | Interface x -> x.loc
+  | Struct x -> x.loc
   | PubDecl x -> x.loc
   | TypeAlias x -> x.loc
   | Invalid -> failwith "Unreachable: node_loc"
-
-type property = Expression | Declaration | CanHaveLabel | Type
-
-let has_property n p =
-  match p with
-  | Expression -> (
-      match n with
-      | Number _ | String _ | Variable _ | ArrayLiteral _ | Call _ | BinOp _
-      | UnaryOp _ | LabeledStmt _ | IfStmt _ | WhileLoop _ | ForLoop _ | Block _
-      | DotExpr _ ->
-          true
-      | _ -> false)
-  | Declaration -> (
-      match n with
-      | LetStmt _ | Function _ | Field _ | Class _ | PubDecl _ | Interface _
-      | TypeAlias _ ->
-          true
-      | _ -> false)
-  | CanHaveLabel -> (
-      match n with
-      | Block _ | IfStmt _ | WhileLoop _ | ForLoop _ -> true
-      | _ -> false)
-  | Type -> (
-      match n with NamedType _ | ArrayType _ | DotType _ -> true | _ -> false)

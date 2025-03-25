@@ -3,7 +3,6 @@ type token_kind =
   | TokIdent
   | TokString
   (* Expressions *)
-  | TokNew
   | TokAdd
   | TokSub
   | TokMul
@@ -20,6 +19,11 @@ type token_kind =
   | TokEq
   | TokNeq
   | TokNot
+  | TokAmp
+  | TokYield
+  | TokResume
+  | TokCoroutine
+  | TokNew
   (* Brackets *)
   | TokLp
   | TokRp
@@ -44,8 +48,7 @@ type token_kind =
   (* Declarations *)
   | TokPub
   | TokFn
-  | TokClass
-  | TokInterface
+  | TokStruct
   | TokType
   (* special token placed at the end of the token list *)
   | TokEnd
@@ -64,9 +67,11 @@ Trie.add_word token_map "while" TokWhile;;
 Trie.add_word token_map "for" TokFor;;
 Trie.add_word token_map "fn" TokFn;;
 Trie.add_word token_map "pub" TokPub;;
-Trie.add_word token_map "class" TokClass;;
-Trie.add_word token_map "interface" TokInterface;;
+Trie.add_word token_map "struct" TokStruct;;
 Trie.add_word token_map "type" TokType;;
+Trie.add_word token_map "yield" TokYield;;
+Trie.add_word token_map "resume" TokResume;;
+Trie.add_word token_map "coroutine" TokCoroutine;;
 Trie.add_word token_map "new" TokNew;;
 Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;
@@ -90,7 +95,8 @@ Trie.add_word token_map "]" TokRs;;
 Trie.add_word token_map ";" TokSemi;;
 Trie.add_word token_map ":" TokColon;;
 Trie.add_word token_map "," TokComa;;
-Trie.add_word token_map "." TokDot
+Trie.add_word token_map "." TokDot;;
+Trie.add_word token_map "&" TokAmp
 
 let tok_kind_to_str tk =
   match tk with
@@ -100,6 +106,7 @@ let tok_kind_to_str tk =
   | TokAdd -> "Add"
   | TokMul -> "Mul"
   | TokSub -> "Sub"
+  | TokAmp -> "Amp"
   | TokAssign -> "Assign"
   | TokEq -> "Eq"
   | TokNeq -> "Neq"
