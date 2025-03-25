@@ -64,12 +64,13 @@ let array_literal () =
   check string "index" "(idx (array_literal (var a)) (num 0))"
     (run_parser "[a][0]")
 
-let new_expr () =
-  check string "no fields" "(new (type Foo) (fields))" (run_parser "new Foo{}");
+let struct_literal () =
+  check string "no fields" "(struct_literal (type Foo) (fields))"
+    (run_parser "Foo{}");
   check string "fields"
-    "(new (type Foo) (fields (field_literal x (num 10)) (field_literal y (num \
-     20))))"
-    (run_parser "new Foo{x:10,y:20}")
+    "(struct_literal (type Foo) (fields (field_literal x (num 10)) \
+     (field_literal y (num 20))))"
+    (run_parser "Foo{x:10,y:20}")
 
 let complicated () =
   let src = "foo(a+b(x,y[i])*(x*z(c,q,w,e)+1))(bar)[1,2,3];" in
@@ -93,7 +94,7 @@ let () =
           ("call", `Quick, call);
           ("index", `Quick, index);
           ("array literal", `Quick, array_literal);
-          ("new expr", `Quick, new_expr);
+          ("struct literal", `Quick, struct_literal);
         ] );
       ("complicated", [ ("c1", `Quick, complicated) ]);
     ]

@@ -3,7 +3,6 @@ type token_kind =
   | TokIdent
   | TokString
   (* Expressions *)
-  | TokNew
   | TokAdd
   | TokSub
   | TokMul
@@ -66,7 +65,6 @@ Trie.add_word token_map "fn" TokFn;;
 Trie.add_word token_map "pub" TokPub;;
 Trie.add_word token_map "struct" TokStruct;;
 Trie.add_word token_map "type" TokType;;
-Trie.add_word token_map "new" TokNew;;
 Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;
 Trie.add_word token_map "*" TokMul;;
