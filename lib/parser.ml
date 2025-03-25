@@ -189,6 +189,18 @@ and parse_term p =
         ( p,
           Ast.UnaryOp
             { op = t; sub = e; loc = Location.union t.loc (Ast.node_loc e) } )
+    | TokYield ->
+        let p, value = if_not_tok TokSemi (fun _ p -> parse_expr p) p in
+        (p, Ast.Yield { value; loc = t.loc })
+    | TokResume ->
+        let p = eat_tok TokLp p in
+        let p, coroutine = parse_expr p in
+        let p, value = if_tok TokComa (fun _ p -> parse_expr p) p in
+        let p = eat_tok TokRp p in
+        (p, Ast.Resume { coroutine; value; loc = t.loc })
+    | TokCoroutine ->
+        let p, fn = parse_expr p in
+        (p, Ast.Coroutine { fn; loc = t.loc })
     | _ -> Error.fail_at_spot "Invalid term" p.src t.loc Error.Unknown
   in
   let rec parse_postfix p leaf =

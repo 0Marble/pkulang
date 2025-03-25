@@ -72,6 +72,16 @@ let struct_literal () =
      (field_literal y (num 20))))"
     (run_parser "Foo{x:10,y:20}")
 
+let coroutines () =
+  check string "yield" "(yield (var a))" (run_parser "yield a");
+  check string "yield nothing" "(yield _)" (run_parser "yield;");
+  check string "create coroutine" "(coroutine (var f))"
+    (run_parser "coroutine f");
+  check string "resume with arg" "(resume (var f) (var a))"
+    (run_parser "resume(f, a)");
+  check string "resume with no arg" "(resume (var f) _)"
+    (run_parser "resume(f)")
+
 let complicated () =
   let src = "foo(a+b(x,y[i])*(x*z(c,q,w,e)+1))(bar)[1,2,3];" in
   let res = run_parser src in
@@ -95,6 +105,7 @@ let () =
           ("index", `Quick, index);
           ("array literal", `Quick, array_literal);
           ("struct literal", `Quick, struct_literal);
+          ("coroutines", `Quick, coroutines);
         ] );
       ("complicated", [ ("c1", `Quick, complicated) ]);
     ]

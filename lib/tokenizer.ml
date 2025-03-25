@@ -20,6 +20,9 @@ type token_kind =
   | TokNeq
   | TokNot
   | TokAmp
+  | TokYield
+  | TokResume
+  | TokCoroutine
   (* Brackets *)
   | TokLp
   | TokRp
@@ -65,6 +68,9 @@ Trie.add_word token_map "fn" TokFn;;
 Trie.add_word token_map "pub" TokPub;;
 Trie.add_word token_map "struct" TokStruct;;
 Trie.add_word token_map "type" TokType;;
+Trie.add_word token_map "yield" TokYield;;
+Trie.add_word token_map "resume" TokResume;;
+Trie.add_word token_map "coroutine" TokCoroutine;;
 Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;
 Trie.add_word token_map "*" TokMul;;

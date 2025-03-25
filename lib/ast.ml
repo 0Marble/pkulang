@@ -15,6 +15,10 @@ type node =
   | ArrayLiteral of { elems : node list; loc : Location.location }
   | StructLiteral of { typ : node; fields : node list; loc : Location.location }
   | FieldLiteral of { name : string; value : node; loc : Location.location }
+  (* Coroutines *)
+  | Yield of { value : node option; loc : Location.location }
+  | Resume of { coroutine : node; value : node option; loc : Location.location }
+  | Coroutine of { fn : node; loc : Location.location }
   (* Statements *)
   | LabeledStmt of { label : string; stmt : node; loc : Location.location }
   | LetStmt of {
@@ -121,6 +125,13 @@ let rec node_to_str n =
       Printf.sprintf "%s))" s
   | FieldLiteral x ->
       Printf.sprintf "(field_literal %s %s)" x.name (node_to_str x.value)
+  | Yield x ->
+      Printf.sprintf "(yield %s)"
+        (x.value |> Option.map node_to_str |> Option.value ~default:"_")
+  | Resume x ->
+      Printf.sprintf "(resume %s %s)" (node_to_str x.coroutine)
+        (x.value |> Option.map node_to_str |> Option.value ~default:"_")
+  | Coroutine x -> Printf.sprintf "(coroutine %s)" (node_to_str x.fn)
   | LabeledStmt x -> Printf.sprintf "(label %s %s)" x.label (node_to_str x.stmt)
   | LetStmt x ->
       Printf.sprintf "(let %s %s %s)" x.name (node_to_str x.typ)
@@ -196,6 +207,9 @@ let node_loc n =
   | Number x -> x.loc
   | StructLiteral x -> x.loc
   | FieldLiteral x -> x.loc
+  | Yield x -> x.loc
+  | Resume x -> x.loc
+  | Coroutine x -> x.loc
   | LetStmt x -> x.loc
   | Block x -> x.loc
   | IfStmt x -> x.loc
