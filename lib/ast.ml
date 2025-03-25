@@ -70,18 +70,7 @@ type node =
       value : node option;
       loc : Location.location;
     }
-  | Class of {
-      name : string;
-      decls : node list;
-      impl : string list;
-      loc : Location.location;
-    }
-  | Interface of {
-      name : string;
-      decls : node list;
-      impl : string list;
-      loc : Location.location;
-    }
+  | Struct of { name : string; decls : node list; loc : Location.location }
   | TypeAlias of { name : string; typ : node; loc : Location.location }
   (* used as a placeholder for when an error occurs *)
   | Invalid
@@ -182,20 +171,12 @@ let rec node_to_str n =
         (x.value
         |> Option.map (fun n -> node_to_str n)
         |> Option.value ~default:"_")
-  | Class x ->
-      Printf.sprintf "(class %s (impl%s) (decls%s))" x.name
-        (x.impl |> List.fold_left (fun acc s -> Printf.sprintf "%s %s" acc s) "")
+  | Struct x ->
+      Printf.sprintf "%s)"
         (x.decls
         |> List.fold_left
              (fun acc n -> Printf.sprintf "%s %s" acc (node_to_str n))
-             "")
-  | Interface x ->
-      Printf.sprintf "(interface %s (impl%s) (decls%s))" x.name
-        (x.impl |> List.fold_left (fun acc s -> Printf.sprintf "%s %s" acc s) "")
-        (x.decls
-        |> List.fold_left
-             (fun acc n -> Printf.sprintf "%s %s" acc (node_to_str n))
-             "")
+             (Printf.sprintf "(struct %s" x.name))
   | TypeAlias x -> Printf.sprintf "(alias %s %s)" x.name (node_to_str x.typ)
   | Invalid -> "?"
 (* | _ -> "Unimplemented" *)
@@ -228,32 +209,7 @@ let node_loc n =
   | LabeledStmt x -> x.loc
   | DotType x -> x.loc
   | Field x -> x.loc
-  | Class x -> x.loc
-  | Interface x -> x.loc
+  | Struct x -> x.loc
   | PubDecl x -> x.loc
   | TypeAlias x -> x.loc
   | Invalid -> failwith "Unreachable: node_loc"
-
-type property = Expression | Declaration | CanHaveLabel | Type
-
-let has_property n p =
-  match p with
-  | Expression -> (
-      match n with
-      | Number _ | String _ | Variable _ | ArrayLiteral _ | Call _ | BinOp _
-      | UnaryOp _ | LabeledStmt _ | IfStmt _ | WhileLoop _ | ForLoop _ | Block _
-      | DotExpr _ ->
-          true
-      | _ -> false)
-  | Declaration -> (
-      match n with
-      | LetStmt _ | Function _ | Field _ | Class _ | PubDecl _ | Interface _
-      | TypeAlias _ ->
-          true
-      | _ -> false)
-  | CanHaveLabel -> (
-      match n with
-      | Block _ | IfStmt _ | WhileLoop _ | ForLoop _ -> true
-      | _ -> false)
-  | Type -> (
-      match n with NamedType _ | ArrayType _ | DotType _ -> true | _ -> false)

@@ -44,8 +44,7 @@ type token_kind =
   (* Declarations *)
   | TokPub
   | TokFn
-  | TokClass
-  | TokInterface
+  | TokStruct
   | TokType
   (* special token placed at the end of the token list *)
   | TokEnd
@@ -64,8 +63,7 @@ Trie.add_word token_map "while" TokWhile;;
 Trie.add_word token_map "for" TokFor;;
 Trie.add_word token_map "fn" TokFn;;
 Trie.add_word token_map "pub" TokPub;;
-Trie.add_word token_map "class" TokClass;;
-Trie.add_word token_map "interface" TokInterface;;
+Trie.add_word token_map "struct" TokStruct;;
 Trie.add_word token_map "type" TokType;;
 Trie.add_word token_map "new" TokNew;;
 Trie.add_word token_map "+" TokAdd;;

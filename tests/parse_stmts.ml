@@ -3,15 +3,11 @@ open Pkulang
 
 let run_parser s =
   let toks = s |> Tokenizer.tokenize in
-  Parser.parse_expr { toks; src = s } |> snd |> Ast.node_to_str
+  Parser.parse_stmt { toks; src = s } |> snd |> Ast.node_to_str
 
 let let_stmt () =
   check string "let" "(let x (type int) (num 10))"
-    (run_parser "let x: int = 10;");
-  check_raises "not an expression" (Error.Error Error.InvalidExpression)
-    (fun () ->
-      let _ = run_parser "10+let x:int = 20;" in
-      ())
+    (run_parser "let x: int = 10;")
 
 let return_stmt () =
   check string "return with value" "(return (var x))" (run_parser "return x;");
@@ -69,6 +65,12 @@ let function_decl () =
   check string "fib" "(fn fib (arg n (type int)) (type int) (block))"
     (run_parser "fn fib(n:int)int{}")
 
+let struct_decl () =
+  check string "empty strcut" "(struct Foo)" (run_parser "struct Foo{}");
+  check string "fields"
+    "(struct Foo (field x (type int) _) (field y (type Bar) _))"
+    (run_parser "struct Foo{x:int,y:Bar,}")
+
 let () =
   run "Parser: statements"
     [
@@ -84,5 +86,6 @@ let () =
           ("for", `Quick, for_loop);
           ("label", `Quick, labeled);
           ("fn", `Quick, function_decl);
+          ("struct", `Quick, struct_decl);
         ] );
     ]
