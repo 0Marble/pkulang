@@ -5,6 +5,30 @@ let run_parser s =
   let toks = s |> Tokenizer.tokenize in
   Parser.parse_root { toks; src = s } |> snd |> Ast.node_to_str
 
+let range () =
+  let src =
+    {|
+    fn range(a: int, b: int) void {
+      let i: int = a;
+      while(i < b) {
+        yield i;
+        i += 1;
+      }
+    }
+
+    fn main() void {
+      for (i : range(0, 10)) print_int(i);
+    }
+  |}
+  in
+  check string "range"
+    "(root (stmts (fn range (arg a (type int)) (arg b (type int)) (type void) \
+     (block (let i (type int) (var a)) (while (bin Lt (var i) (var b)) (block \
+     (yield (var i)) (bin Unimplemented (var i) (num 1))) _))) (fn main (type \
+     void) (block (for i (call (var range) (num 0) (num 10)) (call (var \
+     print_int) (var i)) _)))))"
+    (run_parser src)
+
 let linked_list () =
   let src =
     {|
@@ -45,6 +69,37 @@ let linked_list () =
      (for x (var it) (block (call (var print_int) (var x))) _)))))"
     (run_parser src)
 
+let tree_iter () =
+  let src =
+    {|
+  struct Tree {
+    val: int,
+    left: Tree = null,
+    right: Tree = null,
+    
+    fn iterate() void {
+      if (self.left) self.left.iterate();
+      yield self.val;
+      if (self.right) self.right.iterate();
+    }
+  }
+  |}
+  in
+  check string "tree_iter"
+    "(root (stmts (struct Tree (field val (type int) _) (field left (type \
+     Tree) (var null)) (field right (type Tree) (var null)) (fn iterate (type \
+     void) (block (if (dot (var self) left) (call (dot (dot (var self) left) \
+     iterate)) _) (yield (dot (var self) val)) (if (dot (var self) right) \
+     (call (dot (dot (var self) right) iterate)) _))))))"
+    (run_parser src)
+
 let () =
   run "Parser: example programs"
-    [ ("linked_list", [ ("linked_list", `Quick, linked_list) ]) ]
+    [
+      ( "examples",
+        [
+          ("linked_list", `Quick, linked_list);
+          ("range", `Quick, range);
+          ("tree_iter", `Quick, tree_iter);
+        ] );
+    ]
