@@ -1,0 +1,50 @@
+open Alcotest
+open Pkulang
+
+let run_parser s =
+  let toks = s |> Tokenizer.tokenize in
+  Parser.parse_root { toks; src = s } |> snd |> Ast.node_to_str
+
+let linked_list () =
+  let src =
+    {|
+  struct LinkedList {
+    val: int,
+    next: LinkedList,
+
+    fn iterator() void {
+      yield self.val;
+      if (self.next) self.next.iterator();
+    }
+  }
+
+  fn main() void {
+    let l: LinkedList = null;
+    for (i : range(0, 10)) {
+      l = new LinkedList{ val: i, next: l };
+    } 
+    let it: CoroutineType = coroutine l.iterator;
+    assert(yield(it) == 9);
+    assert(yield(it) == 8);
+    for (x : it) {
+      print_int(x);
+    }
+  }
+  |}
+  in
+  check string "linked_list"
+    "(root (stmts (struct LinkedList (field val (type int) _) (field next \
+     (type LinkedList) _) (fn iterator (type void) (block (yield (dot (var \
+     self) val)) (if (dot (var self) next) (call (dot (dot (var self) next) \
+     iterator)) _)))) (fn main (type void) (block (let l (type LinkedList) \
+     (var null)) (for i (call (var range) (num 0) (num 10)) (block (bin Assign \
+     (var l) (new (type LinkedList) (fields (field_literal val (var i)) \
+     (field_literal next (var l)))))) _) (let it (type CoroutineType) \
+     (coroutine (dot (var l) iterator))) (call (var assert) (yield (bin Eq \
+     (var it) (num 9)))) (call (var assert) (yield (bin Eq (var it) (num 8)))) \
+     (for x (var it) (block (call (var print_int) (var x))) _)))))"
+    (run_parser src)
+
+let () =
+  run "Parser: example programs"
+    [ ("linked_list", [ ("linked_list", `Quick, linked_list) ]) ]

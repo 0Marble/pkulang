@@ -65,12 +65,11 @@ let array_literal () =
     (run_parser "[a][0]")
 
 let struct_literal () =
-  check string "no fields" "(struct_literal (type Foo) (fields))"
-    (run_parser "Foo{}");
+  check string "no fields" "(new (type Foo) (fields))" (run_parser "new Foo{}");
   check string "fields"
-    "(struct_literal (type Foo) (fields (field_literal x (num 10)) \
-     (field_literal y (num 20))))"
-    (run_parser "Foo{x:10,y:20}")
+    "(new (type Foo) (fields (field_literal x (num 10)) (field_literal y (num \
+     20))))"
+    (run_parser "new Foo{x:10,y:20}")
 
 let coroutines () =
   check string "yield" "(yield (var a))" (run_parser "yield a");

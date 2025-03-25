@@ -1,4 +1,5 @@
 type node =
+  | Root of { stmts : node list; loc : Location.location }
   | BinOp of {
       lhs : node;
       rhs : node;
@@ -13,7 +14,7 @@ type node =
   | Number of { num : int; loc : Location.location }
   | String of { str : string; loc : Location.location }
   | ArrayLiteral of { elems : node list; loc : Location.location }
-  | StructLiteral of { typ : node; fields : node list; loc : Location.location }
+  | New of { typ : node; fields : node list; loc : Location.location }
   | FieldLiteral of { name : string; value : node; loc : Location.location }
   (* Coroutines *)
   | Yield of { value : node option; loc : Location.location }
@@ -83,6 +84,12 @@ type node =
 
 let rec node_to_str n =
   match n with
+  | Root x ->
+      Printf.sprintf "(root (stmts%s))"
+        (x.stmts
+        |> List.fold_left
+             (fun acc stmt -> Printf.sprintf "%s %s" acc (node_to_str stmt))
+             "")
   | BinOp x ->
       Printf.sprintf "(bin %s %s %s)"
         (Tokenizer.tok_to_str x.op)
@@ -115,8 +122,8 @@ let rec node_to_str n =
           s x.elems
       in
       Printf.sprintf "%s)" s
-  | StructLiteral x ->
-      let s = Printf.sprintf "(struct_literal %s (fields" (node_to_str x.typ) in
+  | New x ->
+      let s = Printf.sprintf "(new %s (fields" (node_to_str x.typ) in
       let s =
         List.fold_left
           (fun acc s -> Printf.sprintf "%s %s" acc (node_to_str s))
@@ -199,13 +206,14 @@ let rec node_to_str n =
 
 let node_loc n =
   match n with
+  | Root x -> x.loc
   | BinOp x -> x.loc
   | UnaryOp x -> x.loc
   | Call x -> x.loc
   | Index x -> x.loc
   | Variable x -> x.loc
   | Number x -> x.loc
-  | StructLiteral x -> x.loc
+  | New x -> x.loc
   | FieldLiteral x -> x.loc
   | Yield x -> x.loc
   | Resume x -> x.loc

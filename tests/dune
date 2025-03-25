@@ -13,3 +13,7 @@
  (modules parse_stmts)
  (libraries pkulang alcotest))
 
+(test
+ (name parse_program)
+ (modules parse_program)
+ (libraries pkulang alcotest))

@@ -23,6 +23,7 @@ type token_kind =
   | TokYield
   | TokResume
   | TokCoroutine
+  | TokNew
   (* Brackets *)
   | TokLp
   | TokRp
@@ -71,6 +72,7 @@ Trie.add_word token_map "type" TokType;;
 Trie.add_word token_map "yield" TokYield;;
 Trie.add_word token_map "resume" TokResume;;
 Trie.add_word token_map "coroutine" TokCoroutine;;
+Trie.add_word token_map "new" TokNew;;
 Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;
 Trie.add_word token_map "*" TokMul;;

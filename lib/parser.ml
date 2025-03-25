@@ -101,7 +101,7 @@ let rec parse_expr_list p =
 
 and parse_expr p =
   let rec parse_expr' p stack stage =
-    print_expr_situation p stack;
+    (* print_expr_situation p stack; *)
     let reduce stack =
       match stack with
       | a :: Ast.BinOp op :: b :: ts ->
@@ -167,10 +167,7 @@ and parse_term p =
   let t, p = next_tok p in
   let p, leaf =
     match t.kind with
-    | TokIdent -> (
-        match peek_tok_kind p with
-        | Some (TokDot | TokLb) -> parse_struct_literal p'
-        | _ -> (p, Ast.Variable { name = t.str; loc = t.loc }))
+    | TokIdent -> (p, Ast.Variable { name = t.str; loc = t.loc })
     | TokNumber -> (p, Ast.Number { num = int_of_string t.str; loc = t.loc })
     | TokString -> (p, Ast.String { str = t.str; loc = t.loc })
     | TokLs ->
@@ -201,6 +198,31 @@ and parse_term p =
     | TokCoroutine ->
         let p, fn = parse_expr p in
         (p, Ast.Coroutine { fn; loc = t.loc })
+    | TokNew ->
+        let p, typ = parse_type p in
+        let p = eat_tok TokLb p in
+        let rec parse_fields p =
+          let peek, _ = next_tok p in
+          if peek.kind == TokRb then (p, [])
+          else
+            let p, (name, loc) =
+              map_tok TokIdent (fun t _ -> (t.str, t.loc)) p
+            in
+            let p = eat_tok TokColon p in
+            let p, value = parse_expr p in
+            let next, p' = next_tok p in
+            match next.kind with
+            | TokRb -> (p, [ Ast.FieldLiteral { loc; name; value } ])
+            | TokComa ->
+                let p, rest = parse_fields p' in
+                (p, Ast.FieldLiteral { loc; name; value } :: rest)
+            | _ ->
+                Error.fail_at_spot "Expected a coma" p.src next.loc
+                  Error.Unknown
+        in
+        let p, fields = parse_fields p in
+        let p = eat_tok TokRb p in
+        (p, Ast.New { loc = Ast.node_loc typ; typ; fields })
     | _ -> Error.fail_at_spot "Invalid term" p.src t.loc Error.Unknown
   in
   let rec parse_postfix p leaf =
@@ -442,7 +464,6 @@ and parse_stmt p =
       (p, Ast.TypeAlias { loc = t.loc; name; typ })
   | _ ->
       let p, expr = parse_expr p0 in
-      Printf.printf "%s\n" (Ast.node_to_str expr);
       let p = eat_tok TokSemi p in
       (p, expr)
 
@@ -455,24 +476,16 @@ and parse_field_decl p =
   let p = eat_tok TokComa p in
   (p, Ast.Field { loc = start; name; typ; value })
 
-and parse_struct_literal p =
-  let p, typ = parse_type p in
-  let p = eat_tok TokLb p in
-  let rec parse_fields p =
-    let peek, _ = next_tok p in
-    if peek.kind == TokRb then (p, [])
-    else
-      let p, (name, loc) = map_tok TokIdent (fun t _ -> (t.str, t.loc)) p in
-      let p = eat_tok TokColon p in
-      let p, value = parse_expr p in
-      let next, p' = next_tok p in
-      match next.kind with
-      | TokRb -> (p, [ Ast.FieldLiteral { loc; name; value } ])
-      | TokComa ->
-          let p, rest = parse_fields p' in
-          (p, Ast.FieldLiteral { loc; name; value } :: rest)
-      | _ -> Error.fail_at_spot "Expected a coma" p.src next.loc Error.Unknown
+and parse_root p =
+  let rec parse_program' p =
+    match peek_tok_kind p with
+    | Some TokEnd -> (p, [])
+    | Some _ ->
+        let p, stmt = parse_stmt p in
+        let p, rest = parse_program' p in
+        (p, stmt :: rest)
+    | None -> failwith "Unreachable (in parse_program')"
   in
-  let p, fields = parse_fields p in
-  let p = eat_tok TokRb p in
-  (p, Ast.StructLiteral { loc = Ast.node_loc typ; typ; fields })
+  let start = cur_loc p in
+  let p, stmts = parse_program' p in
+  (p, Ast.Root { stmts; loc = start })
