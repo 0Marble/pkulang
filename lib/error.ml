@@ -4,6 +4,7 @@ type error_code =
   | UnexpectedEnd
   | InvalidExpression
   | UnbalancedBrackets
+  | Eval
 
 exception Error of error_code
 
