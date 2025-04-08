@@ -17,3 +17,8 @@
  (name parse_program)
  (modules parse_program)
  (libraries pkulang alcotest))
+
+(test
+ (name runtime_basic)
+ (modules runtime_basic)
+ (libraries pkulang alcotest))
