@@ -38,17 +38,17 @@ let fib () =
        [
          (* 0: main *)
          Alloca 1;
-         Call (Local 0, [| Number 20 |], Constant 4);
+         Call (Local 0, [| Number 20 |], Static 4);
          Builtin (Local 0, [| Local 0 |], "print_int");
          Halt;
          (* 4: fib *)
          Alloca 2;
-         GotoIfZero (Local 0, Constant 13);
+         GotoIfZero (Local 0, Static 13);
          Sub (Local 1, Local 0, Number 1);
-         GotoIfZero (Local 1, Constant 14);
+         GotoIfZero (Local 1, Static 14);
          Sub (Local 2, Local 0, Number 2);
-         Call (Local 1, [| Local 1 |], Constant 4);
-         Call (Local 2, [| Local 2 |], Constant 4);
+         Call (Local 1, [| Local 1 |], Static 4);
+         Call (Local 2, [| Local 2 |], Static 4);
          Add (Local 1, Local 1, Local 2);
          Ret (Local 1);
          Ret (Number 0);

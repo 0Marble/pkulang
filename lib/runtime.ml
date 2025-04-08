@@ -2,21 +2,27 @@ module StringMap = Map.Make (String)
 
 type operand = Number of int | Local of int | Global of int
 type address = Local of int | Global of int
-type target = Constant of int | Dynamic of int
+type target = Static of int | Dynamic of int
 
 type obj =
   | HeapNumber of int
-  | HeapArray of obj array
-  | HeapObject of { fields : obj StringMap.t }
+  | HeapArray of int array
+  | HeapObject of { fields : int StringMap.t }
+
+type heap = { memory : obj array; free : int }
 
 let rec string_of_obj h o =
   match o with
   | HeapNumber x -> string_of_int x
   | HeapArray a ->
-      Array.fold_left (fun acc o -> acc ^ string_of_obj h o ^ ",") "[" a ^ "]"
+      Array.fold_left
+        (fun acc o -> acc ^ string_of_obj h h.memory.(o) ^ ",")
+        "[" a
+      ^ "]"
   | HeapObject o ->
       StringMap.fold
-        (fun f o acc -> Printf.sprintf "%s%s: %s," acc f (string_of_obj h o))
+        (fun f o acc ->
+          Printf.sprintf "%s%s: %s," acc f (string_of_obj h h.memory.(o)))
         o.fields "{"
       ^ "}"
 
@@ -34,8 +40,60 @@ type command_kind =
   | Alloca of int
   | Builtin of (address * operand array * string)
 
+let string_of_cmd idx c =
+  let string_of_tgt a =
+    match a with
+    | Static x -> string_of_int x
+    | Dynamic x -> "r" ^ string_of_int x
+  in
+  let string_of_operand o =
+    match o with
+    | Number x -> string_of_int x
+    | Local x -> "r" ^ string_of_int x
+    | Global x -> "@r" ^ string_of_int x
+  in
+  let string_of_addr a =
+    match a with
+    | Local x -> "r" ^ string_of_int x
+    | Global x -> "@r" ^ string_of_int x
+  in
+  let s =
+    match c with
+    | Halt -> "Halt"
+    | Nop -> "Nop"
+    | Trap -> "Trap"
+    | Add (dest, lhs, rhs) ->
+        Printf.sprintf "Add %s %s %s" (string_of_addr dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Sub (dest, lhs, rhs) ->
+        Printf.sprintf "Sub %s %s %s" (string_of_addr dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Assign (dest, v) ->
+        Printf.sprintf "Assign %s %s" (string_of_addr dest)
+          (string_of_operand v)
+    | Goto tgt -> "Goto " ^ string_of_tgt tgt
+    | GotoIfZero (op, tgt) ->
+        Printf.sprintf "GotoIfZero %s %s" (string_of_operand op)
+          (string_of_tgt tgt)
+    | Call (dest, args, fn) ->
+        Printf.sprintf "Call %s %s %s" (string_of_addr dest)
+          (Array.fold_left
+             (fun acc op -> acc ^ string_of_operand op ^ ",")
+             "[" args
+          ^ "]")
+          (string_of_tgt fn)
+    | Ret op -> "Ret " ^ string_of_operand op
+    | Alloca amt -> "Alloca " ^ string_of_int amt
+    | Builtin (dest, args, fn) ->
+        Printf.sprintf "Builtin.%s %s %s" fn (string_of_addr dest)
+          (Array.fold_left
+             (fun acc op -> acc ^ string_of_operand op ^ ",")
+             "[" args
+          ^ "]")
+  in
+  Printf.sprintf "[%5d] %s" idx s
+
 type command = { cmd : command_kind; loc : Location.location }
-type heap = { memory : obj array; free : int }
 
 type stack_frame = {
   locals : int array;
@@ -75,7 +133,9 @@ let step r =
     match v with
     | Number x -> x
     | Local x -> r.stack.locals.(x)
-    | Global x -> ( match r.heap.memory.(x) with HeapNumber x -> x | _ -> x)
+    | Global x -> (
+        let x = r.stack.locals.(x) in
+        match r.heap.memory.(x) with HeapNumber x -> x | _ -> x)
   in
   let store_int r addr x =
     match addr with
@@ -83,14 +143,17 @@ let step r =
         r.stack.locals.(a) <- x;
         r
     | Global a ->
+        let a = r.stack.locals.(a) in
         r.heap.memory.(a) <- HeapNumber x;
         r
   in
   let get_ip addr =
-    match addr with Constant x -> x | Dynamic x -> r.stack.locals.(x)
+    match addr with Static x -> x | Dynamic x -> r.stack.locals.(x)
   in
 
   let cmd = r.code.(r.stack.ip) in
+  prerr_string @@ string_of_cmd r.stack.ip cmd.cmd;
+  prerr_newline ();
   match cmd.cmd with
   | Halt -> r
   | Nop -> next r
