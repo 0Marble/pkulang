@@ -1,13 +1,8 @@
 module IntSet = Set.Make (Int)
 
-type operand =
-  | Number of int
-  | Register of int
-  | AtRegister of int
-  | Argument of int
-  | AtArgument of int
-
-type destination = Register of int | AtRegister of int
+type value = DynNumber of int | DynPtr of Heap.heap_ptr
+type operand = Number of int | Register of int | Argument of int
+type destination = Register of int
 type jump_target = Static of int | Dynamic of int
 
 type command_kind =
@@ -29,8 +24,8 @@ type command = { cmd : command_kind; loc : Location.location }
 
 type stack_frame = {
   start : int;
-  args : int array;
-  locals : int array;
+  args : value array;
+  locals : value array;
   caller : stack_frame option;
   ip : int;
   return : destination;
@@ -49,28 +44,20 @@ and runtime = {
 }
 
 let string_of_operand_dyn r f op =
-  let heap_val r x =
-    try Heap.string_of_obj r.heap (Heap.get_obj r.heap { idx = x })
-    with Heap.InvalidPtr _ -> "?"
-  in
   match op with
   | Number x -> string_of_int x
-  | Register x ->
-      let local = try string_of_int @@ f.locals.(x) with _ -> "?" in
-      let global = try heap_val r f.locals.(x) with _ -> "?" in
-      Printf.sprintf "r%d=%s(%s)" x local global
-  | AtRegister x ->
-      let local = try string_of_int @@ f.locals.(x) with _ -> "?" in
-      let global = try heap_val r f.locals.(x) with _ -> "?" in
-      Printf.sprintf "@r%d=%s(%s)" x local global
-  | Argument x ->
-      let local = try string_of_int @@ f.args.(x) with _ -> "?" in
-      let global = try heap_val r f.args.(x) with _ -> "?" in
-      Printf.sprintf "a%d=%s(%s)" x local global
-  | AtArgument x ->
-      let local = try string_of_int @@ f.args.(x) with _ -> "?" in
-      let global = try heap_val r f.args.(x) with _ -> "?" in
-      Printf.sprintf "@a%d=%s(%s)" x local global
+  | Register x -> (
+      match f.locals.(x) with
+      | DynNumber y -> Printf.sprintf "r%d=%d" x y
+      | DynPtr y ->
+          Printf.sprintf "r%d->%s" x
+            (Heap.string_of_obj r.heap (Heap.get_obj r.heap y)))
+  | Argument x -> (
+      match f.args.(x) with
+      | DynNumber y -> Printf.sprintf "a%d=%d" x y
+      | DynPtr y ->
+          Printf.sprintf "a%d->%s" x
+            (Heap.string_of_obj r.heap (Heap.get_obj r.heap y)))
 
 let string_of_cmd ?(ctx = None) idx c =
   let sov =
@@ -88,15 +75,9 @@ let string_of_cmd ?(ctx = None) idx c =
     match o with
     | Number x -> string_of_int x
     | Register x -> sov ("r" ^ string_of_int x) (Register x)
-    | AtRegister x -> sov ("@r" ^ string_of_int x) (AtRegister x)
     | Argument x -> sov ("a" ^ string_of_int x) (Argument x)
-    | AtArgument x -> sov ("@a" ^ string_of_int x) (AtArgument x)
   in
-  let string_of_dest a =
-    match a with
-    | AtRegister x -> "@r" ^ string_of_int x
-    | Register x -> "r" ^ string_of_int x
-  in
+  let string_of_dest a = match a with Register x -> "r" ^ string_of_int x in
   let s =
     match c with
     | Halt -> "Halt"
@@ -226,27 +207,28 @@ let step r =
   let get_int r v =
     match v with
     | Number x -> x
+    | Register x -> (
+        match r.stack.locals.(x) with DynNumber y -> y | DynPtr y -> y.idx)
+    | Argument x -> (
+        match r.stack.args.(x) with DynNumber y -> y | DynPtr y -> y.idx)
+  in
+  let get_val r v =
+    match v with
+    | Number x -> DynNumber x
     | Register x -> r.stack.locals.(x)
-    | AtRegister x -> (
-        let x = r.stack.locals.(x) in
-        match r.heap.memory.(x) with HeapNumber x -> x | _ -> x)
     | Argument x -> r.stack.args.(x)
-    | AtArgument x -> (
-        let x = r.stack.args.(x) in
-        match r.heap.memory.(x) with HeapNumber x -> x | _ -> x)
   in
   let store_int r addr x =
     match addr with
-    | AtRegister a ->
-        let a = r.stack.locals.(a) in
-        r.heap.memory.(a) <- HeapNumber x;
-        r
     | Register a ->
-        r.stack.locals.(a) <- x;
+        r.stack.locals.(a) <- DynNumber x;
         r
   in
   let get_ip addr =
-    match addr with Static x -> x | Dynamic x -> r.stack.locals.(x)
+    match addr with
+    | Static x -> x
+    | Dynamic x -> (
+        match r.stack.locals.(x) with DynNumber y -> y | _ -> failwith "Todo")
   in
 
   let cmd = r.code.(r.stack.ip) in
@@ -271,7 +253,8 @@ let step r =
           stack =
             {
               r.stack with
-              locals = Array.append r.stack.locals (Array.make amt 0);
+              locals =
+                Array.append r.stack.locals (Array.make amt (DynNumber 0));
             };
         }
   | Add (dest, lhs, rhs) ->
@@ -284,7 +267,7 @@ let step r =
         {
           start = get_ip fn;
           locals = [||];
-          args = Array.map (fun x -> get_int r x) args;
+          args = Array.map (fun x -> get_val r x) args;
           caller = Some r.stack;
           return = dest;
           ip = get_ip fn;
@@ -306,14 +289,9 @@ let step r =
         Array.fold_left
           (fun (acc, i) op ->
             let s =
-              match op with
-              | Number x -> string_of_int x
-              | Register x -> string_of_int r.stack.locals.(x)
-              | AtRegister x ->
-                  Heap.string_of_obj r.heap r.heap.memory.(r.stack.locals.(x))
-              | Argument x -> string_of_int r.stack.args.(x)
-              | AtArgument x ->
-                  Heap.string_of_obj r.heap r.heap.memory.(r.stack.args.(x))
+              match get_val r op with
+              | DynNumber x -> string_of_int x
+              | DynPtr x -> Heap.string_of_obj r.heap (Heap.get_obj r.heap x)
             in
             if i + 1 = Array.length args then (acc ^ s, i + 1)
             else (acc ^ s ^ ", ", i + 1))
