@@ -32,6 +32,36 @@ let print () =
        ]
        10)
 
+let call () =
+  check string "simple call" "10\n"
+    (interpret
+       [
+         Alloca 1;
+         Call (Register 0, [| Number 6; Number 4 |], Static 4);
+         Builtin (Register 0, [| Register 0 |], "print");
+         Halt;
+         Alloca 1;
+         Add (Register 0, Argument 0, Argument 1);
+         Ret (Register 0);
+       ]
+       100);
+  check string "nested call" "20\n"
+    (interpret
+       [
+         Alloca 1;
+         Call (Register 0, [| Number 6; Number 4 |], Static 4);
+         Builtin (Register 0, [| Register 0 |], "print");
+         Halt;
+         Alloca 1;
+         Add (Register 0, Argument 0, Argument 1);
+         Call (Register 0, [| Register 0 |], Static 8);
+         Ret (Register 0);
+         Alloca 1;
+         Add (Register 0, Argument 0, Argument 0);
+         Ret (Register 0);
+       ]
+       100)
+
 let fib () =
   check string "Fib(20)" "6765\n"
     (interpret
@@ -58,6 +88,11 @@ let fib () =
 let () =
   run "Runtime"
     [
-      ("basic", [ ("nothing", `Quick, nothing); ("print", `Quick, print) ]);
+      ( "basic",
+        [
+          ("nothing", `Quick, nothing);
+          ("print", `Quick, print);
+          ("call", `Quick, call);
+        ] );
       ("programs", [ ("fib", `Quick, fib) ]);
     ]
