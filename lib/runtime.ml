@@ -1,9 +1,9 @@
 module IntSet = Set.Make (Int)
 
 type value = DynNumber of int | DynPtr of Heap.heap_ptr
-type operand = Number of int | Null | Register of int | Argument of int
+type operand = Number of int | Null | Ip | Register of int | Argument of int
 type destination = Register of int
-type jump_target = Static of int | Dynamic of int
+type jump_target = Static of int | Relative of int | Dynamic of int
 
 type command_kind =
   | Halt
@@ -66,6 +66,7 @@ let string_of_operand_dyn r f op =
       | DynPtr y ->
           Printf.sprintf "a%d->(*%d)%s" x y.idx (Heap.string_of_obj r.heap y))
   | Null -> "Null"
+  | Ip -> "Ip"
 
 let string_of_cmd ?(ctx = None) idx c =
   let sov =
@@ -78,9 +79,11 @@ let string_of_cmd ?(ctx = None) idx c =
     match a with
     | Static x -> string_of_int x
     | Dynamic x -> sov ("r" ^ string_of_int x) (Register x)
+    | Relative x -> if x >= 0 then "+" ^ string_of_int x else string_of_int x
   in
   let string_of_operand o =
     match o with
+    | Ip -> "Ip"
     | Null -> "Null"
     | Number x -> string_of_int x
     | Register x -> sov ("r" ^ string_of_int x) (Register x)
@@ -208,6 +211,10 @@ let trace ?(flags = 15) r =
                   if IntSet.mem next_ip v then (v, [])
                   else function_code r next_ip v
               | Dynamic _ -> (v, [])
+              | Relative x ->
+                  let next_ip = ip + x in
+                  if IntSet.mem next_ip v then (v, [])
+                  else function_code r next_ip v
             in
             let v, l = function_code r (ip + 1) (IntSet.add ip v) in
             (v, (ip :: l) @ block)
@@ -246,6 +253,7 @@ let step r =
     in
     let op_to_val r op =
       match op with
+      | Ip -> DynNumber r.stack.ip
       | Null -> DynPtr { idx = 0 }
       | Number x -> DynNumber x
       | Register x -> r.stack.locals.(x)
@@ -260,13 +268,14 @@ let step r =
     let dest_to_val r d =
       match d with Register x -> op_to_val r (Register x)
     in
-    let get_ip addr =
+    let get_ip r addr =
       match addr with
       | Static x -> x
       | Dynamic x -> (
           match r.stack.locals.(x) with
           | DynNumber y -> y
           | _ -> failwith "Todo")
+      | Relative x -> r.stack.ip + x
     in
 
     let cmd = r.code.(r.stack.ip) in
@@ -311,12 +320,12 @@ let step r =
     | Call (dest, args, fn) ->
         let callee =
           {
-            start = get_ip fn;
+            start = get_ip r fn;
             locals = [||];
             args = Array.map (fun x -> op_to_val r x) args;
             caller = Some r.stack;
             return = dest;
-            ip = get_ip fn;
+            ip = get_ip r fn;
           }
         in
         { r with stack = callee }
@@ -347,18 +356,18 @@ let step r =
         print_endline s;
         next { r with stdout = r.stdout ^ s ^ "\n" }
     | Builtin (_, _) -> failwith "Unknown builtin"
-    | Goto tgt -> { r with stack = { r.stack with ip = get_ip tgt } }
+    | Goto tgt -> { r with stack = { r.stack with ip = get_ip r tgt } }
     | GotoIfZero (v, addr) ->
         if op_to_val r v |> val_to_int = 0 then
-          { r with stack = { r.stack with ip = get_ip addr } }
+          { r with stack = { r.stack with ip = get_ip r addr } }
         else next r
     | GotoIfNeg (v, addr) ->
         if op_to_val r v |> val_to_int < 0 then
-          { r with stack = { r.stack with ip = get_ip addr } }
+          { r with stack = { r.stack with ip = get_ip r addr } }
         else next r
     | GotoIfNull (v, addr) ->
         if (op_to_val r v |> val_to_ptr).idx = 0 then
-          { r with stack = { r.stack with ip = get_ip addr } }
+          { r with stack = { r.stack with ip = get_ip r addr } }
         else next r
     | New dest ->
         let h, ptr = Heap.alloc r.heap in

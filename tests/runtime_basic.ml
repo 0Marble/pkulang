@@ -73,6 +73,61 @@ let call () =
        ]
        100)
 
+let goto () =
+  check string "goto" "10\n"
+    (interpret
+       [ Goto (Static 2); Trap; Builtin ([| Number 10 |], "print"); Halt ]
+       10);
+  check string "goto if zero" "10\n"
+    (interpret
+       [
+         GotoIfZero (Number 0, Static 2);
+         Trap;
+         Builtin ([| Number 10 |], "print");
+         Halt;
+       ]
+       10);
+  check string "goto if negative" "10\n"
+    (interpret
+       [
+         GotoIfNeg (Number (-1), Static 2);
+         Trap;
+         Builtin ([| Number 10 |], "print");
+         Halt;
+       ]
+       10);
+  check string "goto if null" "10\n"
+    (interpret
+       [
+         GotoIfNull (Null, Static 2);
+         Trap;
+         Builtin ([| Number 10 |], "print");
+         Halt;
+       ]
+       10);
+  check string "goto relative" "10\n"
+    (interpret
+       [
+         Nop;
+         Nop;
+         Goto (Relative 2);
+         Trap;
+         Builtin ([| Number 10 |], "print");
+         Halt;
+       ]
+       10);
+  check string "goto dynamic" "10\n"
+    (interpret
+       [
+         Alloca 1;
+         Add (Register 0, Ip, Number 3);
+         Goto (Dynamic 0);
+         Trap;
+         Builtin ([| Number 10 |], "print");
+         Halt;
+       ]
+       10)
+
 let fib () =
   check string "Fib(20)" "6765\n"
     (interpret
@@ -105,6 +160,7 @@ let () =
           ("print", `Quick, print);
           ("call", `Quick, call);
           ("null", `Quick, null);
+          ("goto", `Quick, goto);
         ] );
       ("programs", [ ("fib", `Quick, fib) ]);
     ]
