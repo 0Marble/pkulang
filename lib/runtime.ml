@@ -1,7 +1,7 @@
 module IntSet = Set.Make (Int)
 
 type value = DynNumber of int | DynPtr of Heap.heap_ptr
-type operand = Number of int | Register of int | Argument of int
+type operand = Number of int | Null | Register of int | Argument of int
 type destination = Register of int
 type jump_target = Static of int | Dynamic of int
 
@@ -9,16 +9,25 @@ type command_kind =
   | Halt
   | Nop
   | Trap
+  | Trace of int
   | Add of (destination * operand * operand)
   | Sub of (destination * operand * operand)
   | Assign of (destination * operand)
   | Goto of jump_target
   | GotoIfZero of (operand * jump_target)
   | GotoIfNeg of (operand * jump_target)
+  | GotoIfNull of (operand * jump_target)
   | Call of (destination * operand array * jump_target)
   | Ret of operand
   | Alloca of int
-  | Builtin of (destination * operand array * string)
+  | New of destination
+  | Resize of (destination * operand)
+  | AddField of (destination * string)
+  | IndexSet of (destination * operand * operand)
+  | IndexGet of (destination * operand * operand)
+  | Store of (destination * operand)
+  | Load of (destination * operand)
+  | Builtin of (operand array * string)
 
 type command = { cmd : command_kind; loc : Location.location }
 
@@ -50,14 +59,13 @@ let string_of_operand_dyn r f op =
       match f.locals.(x) with
       | DynNumber y -> Printf.sprintf "r%d=%d" x y
       | DynPtr y ->
-          Printf.sprintf "r%d->%s" x
-            (Heap.string_of_obj r.heap (Heap.get_obj r.heap y)))
+          Printf.sprintf "r%d->(*%d)%s" x y.idx (Heap.string_of_obj r.heap y))
   | Argument x -> (
       match f.args.(x) with
       | DynNumber y -> Printf.sprintf "a%d=%d" x y
       | DynPtr y ->
-          Printf.sprintf "a%d->%s" x
-            (Heap.string_of_obj r.heap (Heap.get_obj r.heap y)))
+          Printf.sprintf "a%d->(*%d)%s" x y.idx (Heap.string_of_obj r.heap y))
+  | Null -> "Null"
 
 let string_of_cmd ?(ctx = None) idx c =
   let sov =
@@ -73,6 +81,7 @@ let string_of_cmd ?(ctx = None) idx c =
   in
   let string_of_operand o =
     match o with
+    | Null -> "Null"
     | Number x -> string_of_int x
     | Register x -> sov ("r" ^ string_of_int x) (Register x)
     | Argument x -> sov ("a" ^ string_of_int x) (Argument x)
@@ -82,6 +91,7 @@ let string_of_cmd ?(ctx = None) idx c =
     match c with
     | Halt -> "Halt"
     | Nop -> "Nop"
+    | Trace x -> "Trace " ^ string_of_int x
     | Trap -> "Trap"
     | Add (dest, lhs, rhs) ->
         Printf.sprintf "Add %s %s %s" (string_of_dest dest)
@@ -99,6 +109,9 @@ let string_of_cmd ?(ctx = None) idx c =
     | GotoIfNeg (op, tgt) ->
         Printf.sprintf "GotoIfNeg %s %s" (string_of_operand op)
           (string_of_tgt tgt)
+    | GotoIfNull (op, tgt) ->
+        Printf.sprintf "GotoIfNull %s %s" (string_of_operand op)
+          (string_of_tgt tgt)
     | Call (dest, args, fn) ->
         Printf.sprintf "Call %s %s %s" (string_of_dest dest)
           (Array.fold_left
@@ -108,8 +121,25 @@ let string_of_cmd ?(ctx = None) idx c =
           (string_of_tgt fn)
     | Ret op -> "Ret " ^ string_of_operand op
     | Alloca amt -> "Alloca " ^ string_of_int amt
-    | Builtin (dest, args, fn) ->
-        Printf.sprintf "Builtin.%s %s %s" fn (string_of_dest dest)
+    | New dst -> "New " ^ string_of_dest dst
+    | Resize (arr, size) ->
+        Printf.sprintf "Resize %s %s" (string_of_dest arr)
+          (string_of_operand size)
+    | AddField (obj, fname) ->
+        Printf.sprintf "AddField %s %s" (string_of_dest obj) fname
+    | IndexSet (dest, arr, idx) ->
+        Printf.sprintf "IndexSet %s %s %s" (string_of_dest dest)
+          (string_of_operand arr) (string_of_operand idx)
+    | IndexGet (dest, arr, idx) ->
+        Printf.sprintf "IndexGet %s %s %s" (string_of_dest dest)
+          (string_of_operand arr) (string_of_operand idx)
+    | Load (dest, ptr) ->
+        Printf.sprintf "Load %s %s" (string_of_dest dest)
+          (string_of_operand ptr)
+    | Store (dest, v) ->
+        Printf.sprintf "Store %s %s" (string_of_dest dest) (string_of_operand v)
+    | Builtin (args, fn) ->
+        Printf.sprintf "Builtin.%s %s" fn
           (Array.fold_left
              (fun acc op -> acc ^ string_of_operand op ^ ",")
              "[" args
@@ -118,9 +148,8 @@ let string_of_cmd ?(ctx = None) idx c =
   Printf.sprintf "[%5d] %s" idx s
 
 let create source code main =
-  let size = Int.shift_left 1 16 in
   {
-    heap = { memory = Array.make size (Heap.HeapNumber 0); free = 0 };
+    heap = Heap.create ();
     stdout = "";
     stdin = "";
     stack =
@@ -138,62 +167,69 @@ let create source code main =
     keep_instrs = 20;
   }
 
-let trace r =
+let trace ?(flags = 15) r =
   prerr_string "================TRACE START================\n";
 
-  prerr_string "====== Section 1: Last Instructions =======\n";
-  let s =
-    Queue.fold
-      (fun acc idx -> acc ^ string_of_cmd idx r.code.(idx).cmd ^ "\n")
-      "" r.last_instrs
-  in
-  prerr_string s;
-
-  prerr_string "========= Section 2: Stack Trace ==========\n";
-  let rec stack_trace r f =
-    let acc =
-      match f.caller with Some caller -> stack_trace r caller | None -> "\n"
+  if Int.logand flags 1 <> 0 then (
+    prerr_string "====== Section 1: Last Instructions =======\n";
+    let s =
+      Queue.fold
+        (fun acc idx -> acc ^ string_of_cmd idx r.code.(idx).cmd ^ "\n")
+        "" r.last_instrs
     in
-    Printf.sprintf "%s\n%s"
-      (string_of_cmd ~ctx:(Some (r, f)) f.ip r.code.(f.ip).cmd)
-      acc
-  in
-  prerr_string @@ stack_trace r r.stack;
+    prerr_string s)
+  else ();
 
-  prerr_string "====== Section 3: Current Stack Frame =====\n";
-  prerr_string "==== Section 3.1: Current Function Code ===\n";
-  let rec function_code r ip visited =
-    try
-      let cmd = r.code.(ip) in
-      match cmd.cmd with
-      | Ret _ | Halt -> (IntSet.add ip visited, [ ip ])
-      | Goto tgt | GotoIfNeg (_, tgt) | GotoIfZero (_, tgt) ->
-          let v = IntSet.add ip visited in
-          let v, block =
-            match tgt with
-            | Static next_ip ->
-                if IntSet.mem next_ip v then (v, [])
-                else function_code r next_ip v
-            | Dynamic _ -> (v, [])
-          in
-          let v, l = function_code r (ip + 1) (IntSet.add ip v) in
-          (v, (ip :: l) @ block)
-      | _ ->
-          let v, l = function_code r (ip + 1) (IntSet.add ip visited) in
-          (v, ip :: l)
-    with Invalid_argument _ -> (visited, [])
-  in
-  let _, cmds = function_code r r.stack.start IntSet.empty in
-  List.iter (fun ip -> prerr_endline @@ string_of_cmd ip r.code.(ip).cmd)
-  @@ cmds;
+  if Int.logand flags 2 <> 0 then (
+    prerr_string "========= Section 2: Stack Trace ==========\n";
+    let rec stack_trace r f =
+      let acc =
+        match f.caller with Some caller -> stack_trace r caller | None -> "\n"
+      in
+      Printf.sprintf "%s\n%s"
+        (string_of_cmd ~ctx:(Some (r, f)) f.ip r.code.(f.ip).cmd)
+        acc
+    in
+    prerr_string @@ stack_trace r r.stack)
+  else ();
 
-  prerr_string "===== Section 3.2: Current Registers ======\n";
-  Array.iteri
-    (fun i _ -> prerr_endline @@ string_of_operand_dyn r r.stack (Argument i))
-    r.stack.args;
-  Array.iteri
-    (fun i _ -> prerr_endline @@ string_of_operand_dyn r r.stack (Register i))
-    r.stack.locals;
+  if Int.logand flags 4 <> 0 then (
+    prerr_string "===== Section 3: Current Function Code ====\n";
+    let rec function_code r ip visited =
+      try
+        let cmd = r.code.(ip) in
+        match cmd.cmd with
+        | Ret _ | Halt -> (IntSet.add ip visited, [ ip ])
+        | Goto tgt | GotoIfNeg (_, tgt) | GotoIfZero (_, tgt) ->
+            let v = IntSet.add ip visited in
+            let v, block =
+              match tgt with
+              | Static next_ip ->
+                  if IntSet.mem next_ip v then (v, [])
+                  else function_code r next_ip v
+              | Dynamic _ -> (v, [])
+            in
+            let v, l = function_code r (ip + 1) (IntSet.add ip v) in
+            (v, (ip :: l) @ block)
+        | _ ->
+            let v, l = function_code r (ip + 1) (IntSet.add ip visited) in
+            (v, ip :: l)
+      with Invalid_argument _ -> (visited, [])
+    in
+    let _, cmds = function_code r r.stack.start IntSet.empty in
+    List.iter (fun ip -> prerr_endline @@ string_of_cmd ip r.code.(ip).cmd)
+    @@ cmds)
+  else ();
+
+  if Int.logand flags 8 <> 0 then (
+    prerr_string "====== Section 4: Current Registers =======\n";
+    Array.iteri
+      (fun i _ -> prerr_endline @@ string_of_operand_dyn r r.stack (Argument i))
+      r.stack.args;
+    Array.iteri
+      (fun i _ -> prerr_endline @@ string_of_operand_dyn r r.stack (Register i))
+      r.stack.locals)
+  else ();
 
   prerr_endline "=================TRACE END=================\n"
 
@@ -203,109 +239,158 @@ let finished r =
   if cmd.cmd = Halt then true else false
 
 let step r =
-  let next r = { r with stack = { r.stack with ip = r.stack.ip + 1 } } in
-  let get_int r v =
-    match v with
-    | Number x -> x
-    | Register x -> (
-        match r.stack.locals.(x) with DynNumber y -> y | DynPtr y -> y.idx)
-    | Argument x -> (
-        match r.stack.args.(x) with DynNumber y -> y | DynPtr y -> y.idx)
-  in
-  let get_val r v =
-    match v with
-    | Number x -> DynNumber x
-    | Register x -> r.stack.locals.(x)
-    | Argument x -> r.stack.args.(x)
-  in
-  let store_int r addr x =
-    match addr with
-    | Register a ->
-        r.stack.locals.(a) <- DynNumber x;
-        r
-  in
-  let get_ip addr =
-    match addr with
-    | Static x -> x
-    | Dynamic x -> (
-        match r.stack.locals.(x) with DynNumber y -> y | _ -> failwith "Todo")
-  in
+  try
+    let next r = { r with stack = { r.stack with ip = r.stack.ip + 1 } } in
+    let store r addr x =
+      match addr with Register a -> r.stack.locals.(a) <- x
+    in
+    let op_to_val r op =
+      match op with
+      | Null -> DynPtr { idx = 0 }
+      | Number x -> DynNumber x
+      | Register x -> r.stack.locals.(x)
+      | Argument x -> r.stack.args.(x)
+    in
+    let val_to_int v =
+      match v with DynNumber x -> x | DynPtr _ -> failwith "Not a number"
+    in
+    let val_to_ptr v =
+      match v with DynPtr x -> x | DynNumber _ -> failwith "Not a ptr"
+    in
+    let dest_to_val r d =
+      match d with Register x -> op_to_val r (Register x)
+    in
+    let get_ip addr =
+      match addr with
+      | Static x -> x
+      | Dynamic x -> (
+          match r.stack.locals.(x) with
+          | DynNumber y -> y
+          | _ -> failwith "Todo")
+    in
 
-  let cmd = r.code.(r.stack.ip) in
+    let cmd = r.code.(r.stack.ip) in
 
-  if Queue.length r.last_instrs >= r.keep_instrs then
-    let _ = Queue.pop r.last_instrs in
-    ()
-  else ();
-  Queue.push r.stack.ip r.last_instrs;
+    if Queue.length r.last_instrs >= r.keep_instrs then
+      let _ = Queue.pop r.last_instrs in
+      ()
+    else ();
+    Queue.push r.stack.ip r.last_instrs;
 
-  match cmd.cmd with
-  | Halt -> r
-  | Nop -> next r
-  | Trap ->
-      prerr_string "Trapped!\n";
-      trace r;
-      failwith "Trap"
-  | Alloca amt ->
-      next
-        {
-          r with
-          stack =
-            {
-              r.stack with
-              locals =
-                Array.append r.stack.locals (Array.make amt (DynNumber 0));
-            };
-        }
-  | Add (dest, lhs, rhs) ->
-      next @@ store_int r dest (get_int r lhs + get_int r rhs)
-  | Sub (dest, lhs, rhs) ->
-      next @@ store_int r dest (get_int r lhs - get_int r rhs)
-  | Assign (dest, src) -> next @@ store_int r dest @@ get_int r src
-  | Call (dest, args, fn) ->
-      let callee =
-        {
-          start = get_ip fn;
-          locals = [||];
-          args = Array.map (fun x -> get_val r x) args;
-          caller = Some r.stack;
-          return = dest;
-          ip = get_ip fn;
-        }
-      in
-      { r with stack = callee }
-  | Ret v ->
-      let callee = r.stack in
-      let caller =
-        match callee.caller with
-        | Some f -> f
-        | None ->
-            Error.fail_at_spot r.source "Stack underflow" cmd.loc Error.Eval
-      in
-      let r' = { r with stack = caller } in
-      next @@ store_int r' callee.return (get_int r v)
-  | Builtin (_, args, "print") ->
-      let s, _ =
-        Array.fold_left
-          (fun (acc, i) op ->
-            let s =
-              match get_val r op with
-              | DynNumber x -> string_of_int x
-              | DynPtr x -> Heap.string_of_obj r.heap (Heap.get_obj r.heap x)
-            in
-            if i + 1 = Array.length args then (acc ^ s, i + 1)
-            else (acc ^ s ^ ", ", i + 1))
-          ("", 0) args
-      in
-      print_endline s;
-      next { r with stdout = r.stdout ^ s ^ "\n" }
-  | Builtin (_, _, _) -> failwith "Unknown builtin"
-  | GotoIfZero (v, addr) ->
-      if get_int r v = 0 then
-        { r with stack = { r.stack with ip = get_ip addr } }
-      else next r
-  | GotoIfNeg (v, addr) ->
-      if get_int r v < 0 then
-        { r with stack = { r.stack with ip = get_ip addr } }
-      else next r
-  | _ -> failwith "Todo"
+    match cmd.cmd with
+    | Halt -> r
+    | Nop -> next r
+    | Trap -> failwith "Trap"
+    | Trace x ->
+        trace ~flags:x r;
+        next r
+    | Alloca amt ->
+        next
+          {
+            r with
+            stack =
+              {
+                r.stack with
+                locals =
+                  Array.append r.stack.locals (Array.make amt (DynNumber 0));
+              };
+          }
+    | Add (dest, lhs, rhs) ->
+        store r dest
+          (DynNumber
+             ((op_to_val r lhs |> val_to_int) + (op_to_val r rhs |> val_to_int)));
+        next r
+    | Sub (dest, lhs, rhs) ->
+        store r dest
+          (DynNumber
+             ((op_to_val r lhs |> val_to_int) - (op_to_val r rhs |> val_to_int)));
+        next r
+    | Assign (dest, src) ->
+        store r dest (op_to_val r src);
+        next r
+    | Call (dest, args, fn) ->
+        let callee =
+          {
+            start = get_ip fn;
+            locals = [||];
+            args = Array.map (fun x -> op_to_val r x) args;
+            caller = Some r.stack;
+            return = dest;
+            ip = get_ip fn;
+          }
+        in
+        { r with stack = callee }
+    | Ret v ->
+        let callee = r.stack in
+        let caller =
+          match callee.caller with
+          | Some f -> f
+          | None ->
+              Error.fail_at_spot r.source "Stack underflow" cmd.loc Error.Eval
+        in
+        let r' = { r with stack = caller } in
+        store r' callee.return (op_to_val r v);
+        next r'
+    | Builtin (args, "print") ->
+        let s, _ =
+          Array.fold_left
+            (fun (acc, i) op ->
+              let s =
+                match op_to_val r op with
+                | DynNumber x -> string_of_int x
+                | DynPtr x -> Heap.string_of_obj r.heap x
+              in
+              if i + 1 = Array.length args then (acc ^ s, i + 1)
+              else (acc ^ s ^ ", ", i + 1))
+            ("", 0) args
+        in
+        print_endline s;
+        next { r with stdout = r.stdout ^ s ^ "\n" }
+    | Builtin (_, _) -> failwith "Unknown builtin"
+    | Goto tgt -> { r with stack = { r.stack with ip = get_ip tgt } }
+    | GotoIfZero (v, addr) ->
+        if op_to_val r v |> val_to_int = 0 then
+          { r with stack = { r.stack with ip = get_ip addr } }
+        else next r
+    | GotoIfNeg (v, addr) ->
+        if op_to_val r v |> val_to_int < 0 then
+          { r with stack = { r.stack with ip = get_ip addr } }
+        else next r
+    | GotoIfNull (v, addr) ->
+        if (op_to_val r v |> val_to_ptr).idx = 0 then
+          { r with stack = { r.stack with ip = get_ip addr } }
+        else next r
+    | New dest ->
+        let h, ptr = Heap.alloc r.heap in
+        (match dest with Register x -> r.stack.locals.(x) <- DynPtr ptr);
+        next { r with heap = h }
+    | Resize (arr, len) ->
+        let arr = dest_to_val r arr |> val_to_ptr in
+        let len = op_to_val r len |> val_to_int in
+        let h = Heap.resize r.heap arr len in
+        next { r with heap = h }
+    | IndexSet (dest, idx, x) ->
+        let arr = dest_to_val r dest |> val_to_ptr in
+        let idx = op_to_val r idx |> val_to_int in
+        let x = op_to_val r x |> val_to_ptr in
+        let h = Heap.index_set r.heap arr idx x in
+        next { r with heap = h }
+    | IndexGet (dest, arr, idx) ->
+        let arr = op_to_val r arr |> val_to_ptr in
+        let idx = op_to_val r idx |> val_to_int in
+        store r dest @@ DynPtr (Heap.index_get r.heap arr idx);
+        next r
+    | Load (dest, op) ->
+        let ptr = op_to_val r op |> val_to_ptr in
+        let x = Heap.load r.heap ptr in
+        store r dest (DynNumber x);
+        next r
+    | Store (dest, op) ->
+        let x = op_to_val r op |> val_to_int in
+        let ptr = dest_to_val r dest |> val_to_ptr in
+        let h = Heap.store r.heap ptr x in
+        next { r with heap = h }
+    | _ -> failwith "Todo"
+  with e ->
+    trace r;
+    raise e

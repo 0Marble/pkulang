@@ -21,16 +21,27 @@ let nothing () = check string "Empty" "" (interpret [ Halt ] 10)
 
 let print () =
   check string "Print int" "10\n"
-    (interpret [ Builtin (Register 0, [| Number 10 |], "print"); Halt ] 10);
+    (interpret [ Builtin ([| Number 10 |], "print"); Halt ] 10);
   check string "Print int local" "10\n"
     (interpret
        [
          Alloca 1;
          Assign (Register 0, Number 10);
-         Builtin (Register 0, [| Register 0 |], "print");
+         Builtin ([| Register 0 |], "print");
          Halt;
        ]
        10)
+
+let null () =
+  check string "null" "10\n"
+    (interpret
+       [
+         GotoIfNull (Null, Static 2);
+         Trap;
+         Builtin ([| Number 10 |], "print");
+         Halt;
+       ]
+       100)
 
 let call () =
   check string "simple call" "10\n"
@@ -38,7 +49,7 @@ let call () =
        [
          Alloca 1;
          Call (Register 0, [| Number 6; Number 4 |], Static 4);
-         Builtin (Register 0, [| Register 0 |], "print");
+         Builtin ([| Register 0 |], "print");
          Halt;
          Alloca 1;
          Add (Register 0, Argument 0, Argument 1);
@@ -50,7 +61,7 @@ let call () =
        [
          Alloca 1;
          Call (Register 0, [| Number 6; Number 4 |], Static 4);
-         Builtin (Register 0, [| Register 0 |], "print");
+         Builtin ([| Register 0 |], "print");
          Halt;
          Alloca 1;
          Add (Register 0, Argument 0, Argument 1);
@@ -69,7 +80,7 @@ let fib () =
          (* 0: main *)
          Alloca 1;
          Call (Register 0, [| Number 20 |], Static 4);
-         Builtin (Register 0, [| Register 0 |], "print");
+         Builtin ([| Register 0 |], "print");
          Halt;
          (* 4: fib *)
          Alloca 2;
@@ -86,13 +97,14 @@ let fib () =
        150000)
 
 let () =
-  run "Runtime"
+  run "Runtime: basic"
     [
       ( "basic",
         [
           ("nothing", `Quick, nothing);
           ("print", `Quick, print);
           ("call", `Quick, call);
+          ("null", `Quick, null);
         ] );
       ("programs", [ ("fib", `Quick, fib) ]);
     ]
