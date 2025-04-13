@@ -21,13 +21,13 @@ let nothing () = check string "Empty" "" (interpret [ Halt ] 10)
 
 let print () =
   check string "Print int" "10\n"
-    (interpret [ Builtin (Local 0, [| Number 10 |], "print_int"); Halt ] 10);
+    (interpret [ Builtin (Register 0, [| Number 10 |], "print"); Halt ] 10);
   check string "Print int local" "10\n"
     (interpret
        [
          Alloca 1;
-         Assign (Local 0, Number 10);
-         Builtin (Local 0, [| Local 0 |], "print_int");
+         Assign (Register 0, Number 10);
+         Builtin (Register 0, [| Register 0 |], "print");
          Halt;
        ]
        10)
@@ -38,24 +38,22 @@ let fib () =
        [
          (* 0: main *)
          Alloca 1;
-         Call (Local 0, [| Number 20 |], Static 4);
-         Builtin (Local 0, [| Local 0 |], "print_int");
+         Call (Register 0, [| Number 20 |], Static 4);
+         Builtin (Register 0, [| Register 0 |], "print");
          Halt;
          (* 4: fib *)
          Alloca 2;
-         GotoIfZero (Local 0, Static 13);
-         Sub (Local 1, Local 0, Number 1);
-         GotoIfZero (Local 1, Static 14);
-         Sub (Local 2, Local 0, Number 2);
-         Call (Local 1, [| Local 1 |], Static 4);
-         Call (Local 2, [| Local 2 |], Static 4);
-         Add (Local 1, Local 1, Local 2);
-         Ret (Local 1);
-         Ret (Number 0);
-         Ret (Number 1);
+         Sub (Register 0, Argument 0, Number 1);
+         Sub (Register 1, Argument 0, Number 2);
+         GotoIfNeg (Register 1, Static 12);
+         Call (Register 0, [| Register 0 |], Static 4);
+         Call (Register 1, [| Register 1 |], Static 4);
+         Add (Register 0, Register 0, Register 1);
+         Ret (Register 0);
+         Ret (Argument 0);
          Trap;
        ]
-       400000)
+       150000)
 
 let () =
   run "Runtime"
