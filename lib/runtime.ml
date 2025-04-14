@@ -68,7 +68,7 @@ let string_of_operand_dyn r f op =
   | Null -> "Null"
   | Ip -> "Ip"
 
-let string_of_cmd ?(ctx = None) idx c =
+let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
   let sov =
     match ctx with
     | None -> fun s _ -> s
@@ -148,7 +148,8 @@ let string_of_cmd ?(ctx = None) idx c =
              "[" args
           ^ "]")
   in
-  Printf.sprintf "[%5d] %s" idx s
+  if not mark then Printf.sprintf "[%5d] %s" idx s
+  else Printf.sprintf "[>%4d] %s" idx s
 
 let create source code main =
   {
@@ -224,7 +225,9 @@ let trace ?(flags = 15) r =
       with Invalid_argument _ -> (visited, [])
     in
     let _, cmds = function_code r r.stack.start IntSet.empty in
-    List.iter (fun ip -> prerr_endline @@ string_of_cmd ip r.code.(ip).cmd)
+    List.iter (fun ip ->
+        prerr_endline
+        @@ string_of_cmd ~mark:(ip = r.stack.ip) ip r.code.(ip).cmd)
     @@ cmds)
   else ();
 
