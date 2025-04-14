@@ -22,6 +22,7 @@ type command_kind =
   | Alloca of int
   | New of destination
   | Resize of (destination * operand)
+  | Size of (destination * operand)
   | AddField of (destination * string)
   | IndexSet of (destination * operand * operand)
   | IndexGet of (destination * operand * operand)
@@ -132,6 +133,8 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
     | Resize (arr, size) ->
         Printf.sprintf "Resize %s %s" (string_of_dest arr)
           (string_of_operand size)
+    | Size (dst, arr) ->
+        Printf.sprintf "Size %s %s" (string_of_dest dst) (string_of_operand arr)
     | AddField (obj, fname) ->
         Printf.sprintf "AddField %s %s" (string_of_dest obj) fname
     | IndexSet (dest, arr, idx) ->
@@ -385,6 +388,10 @@ let step r =
         let len = op_to_val r len |> val_to_int in
         let h = Heap.resize r.heap arr len in
         next { r with heap = h }
+    | Size (dest, arr) ->
+        let arr = op_to_val r arr |> val_to_ptr in
+        store r dest @@ DynNumber (Heap.length r.heap arr);
+        next r
     | IndexSet (dest, idx, x) ->
         let arr = dest_to_val r dest |> val_to_ptr in
         let idx = op_to_val r idx |> val_to_int in

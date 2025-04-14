@@ -41,6 +41,13 @@ let resize h ptr new_len =
           h)
     | _ -> failwith "Not an array"
 
+let length h ptr =
+  if not (ptr_valid h ptr) then raise (InvalidPtr ptr)
+  else
+    match h.memory.(ptr.idx) with
+    | HeapArray arr -> Array.length arr
+    | _ -> failwith "Not an array"
+
 let store h ptr x =
   if not (ptr_valid h ptr) then raise (InvalidPtr ptr)
   else

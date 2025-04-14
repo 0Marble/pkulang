@@ -71,6 +71,19 @@ let array_print () =
        ]
        20)
 
+let length () =
+  check string "length" "10\n"
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         Resize (Register 0, Number 10);
+         Size (Register 0, Register 0);
+         Builtin ([| Register 0 |], "print");
+         Halt;
+       ]
+       10)
+
 let range () =
   check string "range(0, 10)" "[0,1,2,3,4,5,6,7,8,9]\n"
     (interpret
@@ -145,7 +158,7 @@ let sort () =
          Builtin ([| Register 0 |], "print");
          Halt;
          (* qsort(arr: ptr, start: int, end: int) ptr *)
-         Alloca 10;
+         Alloca 2;
          Sub (Register 0, Argument 2, Argument 1);
          (* base case: [] *)
          GotoIfZero (Register 0, Relative 2);
@@ -156,33 +169,17 @@ let sort () =
          GotoIfZero (Register 0, Relative 2);
          Goto (Relative 2);
          Ret (Argument 0);
-         (* base case: [x, y] *)
-         Sub (Register 0, Register 0, Number 1);
-         GotoIfZero (Register 0, Relative 2);
-         Goto (Relative 12);
-         IndexGet (Register 0, Argument 0, Number 0);
-         IndexGet (Register 1, Argument 0, Number 1);
-         Load (Register 2, Register 0);
-         Load (Register 3, Register 1);
-         Sub (Register 4, Register 2, Register 3);
-         GotoIfNeg (Register 4, Relative 2);
-         Goto (Relative 2);
-         Ret (Argument 0);
-         Store (Register 0, Register 3);
-         Store (Register 1, Register 2);
-         Ret (Argument 0);
          (* recursion *)
-         Call (Register 0, [| Argument 0; Argument 1; Argument 2 |], Relative 6);
-         Nop;
+         Call (Register 0, [| Argument 0; Argument 1; Argument 2 |], Relative 5);
          Call
-           (Register 1, [| Argument 0; Argument 1; Register 0 |], Relative (-25));
+           (Register 1, [| Argument 0; Argument 1; Register 0 |], Relative (-10));
          Add (Register 0, Register 0, Number 1);
          Call
-           (Register 1, [| Argument 0; Register 0; Argument 2 |], Relative (-27));
+           (Register 1, [| Argument 0; Register 0; Argument 2 |], Relative (-12));
          Ret (Argument 0);
          (* partition(arr: ptr, start: int, end: int) int *)
          (* modifies arr from [x, ...] to [..., x, ...], returns new idx of x *)
-         Alloca 10;
+         Alloca 8;
          Assign (Register 0, Argument 1);
          Assign (Register 1, Argument 1);
          (* for r0=start+1; r0 < end; r0++: *)
@@ -213,6 +210,6 @@ let sort () =
 let () =
   run "Runtime: arrays"
     [
-      ("basic", [ ("print", `Quick, array_print) ]);
+      ("basic", [ ("print", `Quick, array_print); ("length", `Quick, length) ]);
       ("programs", [ ("range", `Quick, range); ("qsort", `Quick, sort) ]);
     ]
