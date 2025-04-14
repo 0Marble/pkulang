@@ -102,9 +102,117 @@ let range () =
        ]
        10000)
 
+let sort () =
+  check string "Sort" "[3,5,6,4,0,7,8,9,1,2]\n[0,1,2,3,4,5,6,7,8,9]\n"
+    (interpret
+       [
+         (* 0: main() *)
+         Alloca 2;
+         New (Register 0);
+         Resize (Register 0, Number 10);
+         New (Register 1);
+         Store (Register 1, Number 3);
+         IndexSet (Register 0, Number 0, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 5);
+         IndexSet (Register 0, Number 1, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 6);
+         IndexSet (Register 0, Number 2, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 4);
+         IndexSet (Register 0, Number 3, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 0);
+         IndexSet (Register 0, Number 4, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 7);
+         IndexSet (Register 0, Number 5, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 8);
+         IndexSet (Register 0, Number 6, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 9);
+         IndexSet (Register 0, Number 7, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 1);
+         IndexSet (Register 0, Number 8, Register 1);
+         New (Register 1);
+         Store (Register 1, Number 2);
+         IndexSet (Register 0, Number 9, Register 1);
+         Builtin ([| Register 0 |], "print");
+         Call (Register 0, [| Register 0; Number 0; Number 10 |], Relative 3);
+         Builtin ([| Register 0 |], "print");
+         Halt;
+         (* qsort(arr: ptr, start: int, end: int) ptr *)
+         Alloca 10;
+         Sub (Register 0, Argument 2, Argument 1);
+         (* base case: [] *)
+         GotoIfZero (Register 0, Relative 2);
+         Goto (Relative 2);
+         Ret (Argument 0);
+         (* base case: [x] *)
+         Sub (Register 0, Register 0, Number 1);
+         GotoIfZero (Register 0, Relative 2);
+         Goto (Relative 2);
+         Ret (Argument 0);
+         (* base case: [x, y] *)
+         Sub (Register 0, Register 0, Number 1);
+         GotoIfZero (Register 0, Relative 2);
+         Goto (Relative 12);
+         IndexGet (Register 0, Argument 0, Number 0);
+         IndexGet (Register 1, Argument 0, Number 1);
+         Load (Register 2, Register 0);
+         Load (Register 3, Register 1);
+         Sub (Register 4, Register 2, Register 3);
+         GotoIfNeg (Register 4, Relative 2);
+         Goto (Relative 2);
+         Ret (Argument 0);
+         Store (Register 0, Register 3);
+         Store (Register 1, Register 2);
+         Ret (Argument 0);
+         (* recursion *)
+         Call (Register 0, [| Argument 0; Argument 1; Argument 2 |], Relative 6);
+         Nop;
+         Call
+           (Register 1, [| Argument 0; Argument 1; Register 0 |], Relative (-25));
+         Add (Register 0, Register 0, Number 1);
+         Call
+           (Register 1, [| Argument 0; Register 0; Argument 2 |], Relative (-27));
+         Ret (Argument 0);
+         (* partition(arr: ptr, start: int, end: int) int *)
+         (* modifies arr from [x, ...] to [..., x, ...], returns new idx of x *)
+         Alloca 10;
+         Assign (Register 0, Argument 1);
+         Assign (Register 1, Argument 1);
+         (* for r0=start+1; r0 < end; r0++: *)
+         (* if arr[r1] > arr[r0]: swap(arr, r0, r1+1), swap(arr, r1, r1+1), r1++ *)
+         Add (Register 0, Register 0, Number 1);
+         Sub (Register 2, Register 0, Argument 2);
+         GotoIfZero (Register 2, Relative 15);
+         IndexGet (Register 2, Argument 0, Register 0);
+         IndexGet (Register 3, Argument 0, Register 1);
+         Load (Register 4, Register 2);
+         Load (Register 5, Register 3);
+         Sub (Register 6, Register 5, Register 4);
+         GotoIfNeg (Register 6, Relative (-8));
+         Add (Register 6, Register 1, Number 1);
+         IndexGet (Register 6, Argument 0, Register 6);
+         Load (Register 7, Register 6);
+         (* r2=&arr[r0], r3=&arr[r1], r6=&arr[r1+1] *)
+         (* r4=arr[r0], r5=arr[r1], r7=arr[r1+1] *)
+         Store (Register 2, Register 7);
+         Store (Register 3, Register 4);
+         Store (Register 6, Register 5);
+         Add (Register 1, Register 1, Number 1);
+         Goto (Relative (-16));
+         Ret (Register 1);
+       ]
+       100000)
+
 let () =
   run "Runtime: arrays"
     [
       ("basic", [ ("print", `Quick, array_print) ]);
-      ("programs", [ ("range", `Quick, range) ]);
+      ("programs", [ ("range", `Quick, range); ("qsort", `Quick, sort) ]);
     ]

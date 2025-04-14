@@ -79,7 +79,11 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
     match a with
     | Static x -> string_of_int x
     | Dynamic x -> sov ("r" ^ string_of_int x) (Register x)
-    | Relative x -> if x >= 0 then "+" ^ string_of_int x else string_of_int x
+    | Relative x -> (
+        let s = if x >= 0 then "+" ^ string_of_int x else string_of_int x in
+        match ctx with
+        | Some (_, f) -> Printf.sprintf "%s=%d" s (f.ip + x)
+        | None -> s)
   in
   let string_of_operand o =
     match o with
@@ -203,7 +207,7 @@ let trace ?(flags = 15) r =
       try
         let cmd = r.code.(ip) in
         match cmd.cmd with
-        | Ret _ | Halt -> (IntSet.add ip visited, [ ip ])
+        | Ret _ | Halt | Trap -> (IntSet.add ip visited, [ ip ])
         | Goto tgt | GotoIfNeg (_, tgt) | GotoIfZero (_, tgt) ->
             let v = IntSet.add ip visited in
             let v, block =
