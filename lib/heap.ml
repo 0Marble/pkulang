@@ -2,25 +2,57 @@ module StringMap = Map.Make (String)
 
 type heap_ptr = { idx : int }
 
+module IntSet = Set.Make (Int)
+
 type obj =
   | HeapInvalid
+  | FreeList of int
   | HeapNumber of int
   | HeapArray of heap_ptr array
   | HeapObject of { fields : heap_ptr StringMap.t }
 
-type heap = { memory : obj array; free : int }
+type heap = {
+  memory : obj array;
+  min_address : int;
+  used_size : int;
+  max_address : int;
+  free : int;
+  gc_threshold : int;
+  prev_gc : int;
+}
 
 exception InvalidPtr of heap_ptr
+exception OOM
 
 let ptr_valid h ptr = ptr.idx >= 1024 && ptr.idx < h.free
 
 let create () =
   let size = Int.shift_left 1 16 in
-  { memory = Array.make size HeapInvalid; free = 1024 }
+  {
+    memory = Array.make size HeapInvalid;
+    free = 1024;
+    min_address = 1024;
+    used_size = 0;
+    max_address = 1024;
+    gc_threshold = 4096;
+    prev_gc = 0;
+  }
 
 let alloc h =
-  if h.free >= Array.length h.memory then failwith "Out of memory"
-  else ({ h with free = h.free + 1 }, { idx = h.free })
+  let slot = h.free in
+  let next_free, max_address =
+    match h.memory.(slot) with
+    | FreeList next_free -> (next_free, h.max_address)
+    | _ ->
+        if h.max_address >= Array.length h.memory then raise OOM
+        else (slot + 1, h.max_address + 1)
+  in
+  ( { h with free = next_free; used_size = h.used_size + 1; max_address },
+    { idx = slot } )
+
+let dealloc h ptr =
+  h.memory.(ptr.idx) <- FreeList h.free;
+  { h with free = ptr.idx; used_size = h.used_size - 1 }
 
 let resize h ptr new_len =
   if not (ptr_valid h ptr) then raise (InvalidPtr ptr)
@@ -118,7 +150,7 @@ let field_set h ptr fname x =
 let rec string_of_obj h ptr =
   let o = h.memory.(ptr.idx) in
   match o with
-  | HeapInvalid -> "?"
+  | HeapInvalid | FreeList _ -> "?"
   | HeapNumber x -> string_of_int x
   | HeapArray a ->
       let s, _ =
@@ -144,3 +176,42 @@ let rec string_of_obj h ptr =
           obj.fields ("{", 0)
       in
       s ^ "}"
+
+let maybe_gc h active =
+  let rec mark h ptr visited =
+    match h.memory.(ptr.idx) with
+    | FreeList _ -> failwith "Shouldnt be accessable"
+    | HeapNumber _ | HeapInvalid -> IntSet.add ptr.idx visited
+    | HeapArray arr ->
+        let visited = IntSet.add ptr.idx visited in
+        Array.fold_left
+          (fun visited elem ->
+            if IntSet.mem elem.idx visited then visited else mark h elem visited)
+          visited arr
+    | HeapObject o ->
+        let visited = IntSet.add ptr.idx visited in
+        StringMap.fold
+          (fun _ ptr visited ->
+            if IntSet.mem ptr.idx visited then visited else mark h ptr visited)
+          o.fields visited
+  in
+  let rec sweep h i accessible =
+    if i >= h.max_address then h
+    else
+      match h.memory.(i) with
+      | FreeList _ -> sweep h (i + 1) accessible
+      | _ ->
+          if IntSet.mem i accessible then sweep h (i + 1) accessible
+          else
+            let h = dealloc h { idx = i } in
+            sweep h (i + 1) accessible
+  in
+  if h.used_size / h.gc_threshold = h.prev_gc / h.gc_threshold then h
+  else
+    let accessable =
+      List.fold_left
+        (fun visited root -> mark h root visited)
+        IntSet.empty active
+    in
+    let h' = sweep h h.min_address accessable in
+    { h' with prev_gc = h.used_size }
