@@ -9,8 +9,8 @@ let enter_scope env = Hashtbl.create (Hashtbl.length (List.hd env)) :: env
 
 let exit_scope (env : 'a t) : 'a t =
   match env with
-  | _scope :: rest -> rest
-  | [] -> raise No_scope
+  | _ :: (_ :: _ as rest) -> rest
+  | _ -> raise No_scope
 
 let add (env : 'a t) (name : string) (value : 'a) : unit =
   match env with
