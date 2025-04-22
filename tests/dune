@@ -17,3 +17,23 @@
  (name parse_program)
  (modules parse_program)
  (libraries pkulang alcotest))
+
+(test
+ (name runtime_basic)
+ (modules runtime_basic)
+ (libraries pkulang alcotest))
+
+(test
+ (name runtime_arrays)
+ (modules runtime_arrays)
+ (libraries pkulang alcotest))
+
+(test
+ (name runtime_gc)
+ (modules runtime_gc)
+ (libraries pkulang alcotest))
+
+(test
+ (name runtime_coroutines)
+ (modules runtime_coroutines)
+ (libraries pkulang alcotest))
