@@ -29,6 +29,8 @@ type command_kind =
   | Resize of (Stack.location * operand)
   | Size of (Stack.location * operand)
   | AddField of (Stack.location * string)
+  | FieldSet of (Stack.location * string * operand)
+  | FieldGet of (Stack.location * operand * string)
   | IndexSet of (Stack.location * operand * operand)
   | IndexGet of (Stack.location * operand * operand)
   | Store of (Stack.location * operand)
@@ -145,6 +147,12 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
         Printf.sprintf "Size %s %s" (string_of_dest dst) (string_of_operand arr)
     | AddField (obj, fname) ->
         Printf.sprintf "AddField %s %s" (string_of_dest obj) fname
+    | FieldSet (obj, fname, v) ->
+        Printf.sprintf "FieldSet %s %s %s" (string_of_dest obj) fname
+          (string_of_operand v)
+    | FieldGet (dest, obj, fname) ->
+        Printf.sprintf "FieldGet %s %s %s" (string_of_dest dest)
+          (string_of_operand obj) fname
     | IndexSet (dest, arr, idx) ->
         Printf.sprintf "IndexSet %s %s %s" (string_of_dest dest)
           (string_of_operand arr) (string_of_operand idx)
@@ -475,7 +483,20 @@ let step r =
         let ptr = Stack.load r.stack dest in
         let h = Heap.store r.heap ptr x in
         next { r with heap = h }
-    | _ -> failwith "Todo"
+    | AddField (obj, fname) ->
+        let obj = Stack.load r.stack obj in
+        let h = Heap.add_field r.heap obj fname in
+        next { r with heap = h }
+    | FieldSet (obj, fname, v) ->
+        let obj = Stack.load r.stack obj in
+        let v = op_to_val r v in
+        let h = Heap.field_set r.heap obj fname v in
+        next { r with heap = h }
+    | FieldGet (dest, obj, fname) ->
+        let obj = op_to_val r obj in
+        let v = Heap.field_get r.heap obj fname in
+        Stack.store r.stack dest v;
+        next r
   with e ->
     trace r;
     raise e

@@ -37,3 +37,8 @@
  (name runtime_coroutines)
  (modules runtime_coroutines)
  (libraries pkulang alcotest))
+
+(test
+ (name runtime_objs)
+ (modules runtime_objs)
+ (libraries pkulang alcotest))

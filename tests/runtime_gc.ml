@@ -130,6 +130,99 @@ let array () =
   check int "Memory used" 0 r.heap.used_size;
   check int "Max address" (1024 + 101) r.heap.max_address
 
+let obj () =
+  let r =
+    interpret
+      [
+        DisableGc;
+        Alloca 2;
+        New (Register 0);
+        New (Register 1);
+        AddField (Register 0, "foo");
+        AddField (Register 0, "bar");
+        AddField (Register 1, "baz");
+        FieldSet (Register 0, "foo", Location (Register 1));
+        FieldSet (Register 0, "bar", Number 10);
+        FieldSet (Register 1, "baz", Number 20);
+        Assign (Register 0, Null);
+        Assign (Register 1, Null);
+        ForceGc;
+        Halt;
+      ]
+      100
+  in
+  check int "Memory used" 0 r.heap.used_size;
+  check int "Max address" (1024 + 2) r.heap.max_address
+
+let circular_ref () =
+  let r =
+    interpret
+      [
+        DisableGc;
+        Alloca 1;
+        New (Register 0);
+        AddField (Register 0, "self");
+        FieldSet (Register 0, "self", Location (Register 0));
+        Assign (Register 0, Null);
+        ForceGc;
+        Halt;
+      ]
+      100
+  in
+  check int "Memory used" 0 r.heap.used_size;
+  check int "Max address" (1024 + 1) r.heap.max_address
+
+let linked_list () =
+  let r =
+    interpret
+      [
+        DisableGc;
+        Call (Void, [| Number 100; Null |], Relative 3);
+        ForceGc;
+        Halt;
+        Alloca 2;
+        Assign (Register 0, Null);
+        GotoIfNeg (Location (Argument 0), Relative 8);
+        New (Register 0);
+        AddField (Register 0, "next");
+        AddField (Register 0, "prev");
+        FieldSet (Register 0, "prev", Location (Argument 1));
+        Sub (Register 1, Location (Argument 0), Number 1);
+        Call
+          ( Register 1,
+            [| Location (Register 1); Location (Register 0) |],
+            Relative (-8) );
+        FieldSet (Register 0, "next", Location (Register 1));
+        Ret (Location (Register 0));
+      ]
+      10000
+  in
+  check int "Memory used" 0 r.heap.used_size;
+  check int "Max address" (1024 + 101) r.heap.max_address
+
+let reassign () =
+  let r =
+    interpret
+      [
+        DisableGc;
+        Alloca 2;
+        New (Register 0);
+        Assign (Register 1, Location (Register 0));
+        AddField (Register 1, "foo");
+        AddField (Register 0, "bar");
+        FieldSet (Register 0, "foo", Number 10);
+        FieldSet (Register 1, "bar", Number 20);
+        Assign (Register 0, Number 0);
+        ForceGc;
+        Builtin ([| Location (Register 0); Location (Register 1) |], "print");
+        Halt;
+      ]
+      100
+  in
+  check string "output" "0, {foo: 10, bar: 20}\n" r.stdout;
+  check int "Memory used" 1 r.heap.used_size;
+  check int "Max address" (1024 + 1) r.heap.max_address
+
 let () =
   run "Runtime: gc"
     [
@@ -141,5 +234,9 @@ let () =
           ("a_bunch_of_garbage", `Quick, a_bunch_of_garbage);
           ("oom", `Quick, oom);
           ("array", `Quick, array);
+          ("object", `Quick, obj);
+          ("circular_ref", `Quick, circular_ref);
+          ("linked_list", `Quick, linked_list);
+          ("reassign", `Quick, reassign);
         ] );
     ]
