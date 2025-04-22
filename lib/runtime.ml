@@ -1,51 +1,41 @@
 module IntSet = Set.Make (Int)
 
-type operand = Number of int | Null | Ip | Register of int | Argument of int
-type destination = Register of int
-type jump_target = Static of int | Relative of int | Dynamic of int
+type operand = Number of int | Null | Ip | Location of Stack.location
+type jump_target = Static of int | Relative of int | Dynamic of Stack.location
 
 type command_kind =
   | Halt
   | Nop
   | Trap
   | Trace of int
-  | Add of (destination * operand * operand)
-  | Sub of (destination * operand * operand)
-  | Assign of (destination * operand)
+  | Add of (Stack.location * operand * operand)
+  | Sub of (Stack.location * operand * operand)
+  | Assign of (Stack.location * operand)
   | Goto of jump_target
   | GotoIfZero of (operand * jump_target)
   | GotoIfNeg of (operand * jump_target)
   | GotoIfNull of (operand * jump_target)
-  | Call of (destination * operand array * jump_target)
+  | Call of (Stack.location * operand array * jump_target)
   | Ret of operand
   | Alloca of int
-  | New of destination
+  | New of Stack.location
   | Free of operand
   | ForceGc
   | DisableGc
   | EnableGc
-  | Resize of (destination * operand)
-  | Size of (destination * operand)
-  | AddField of (destination * string)
-  | IndexSet of (destination * operand * operand)
-  | IndexGet of (destination * operand * operand)
-  | Store of (destination * operand)
-  | Load of (destination * operand)
+  | Resize of (Stack.location * operand)
+  | Size of (Stack.location * operand)
+  | AddField of (Stack.location * string)
+  | IndexSet of (Stack.location * operand * operand)
+  | IndexGet of (Stack.location * operand * operand)
+  | Store of (Stack.location * operand)
+  | Load of (Stack.location * operand)
   | Builtin of (operand array * string)
 
 type command = { cmd : command_kind; loc : Location.location }
 
-type stack_frame = {
-  start : int;
-  args : Value.value array;
-  locals : Value.value array;
-  caller : stack_frame option;
-  ip : int;
-  return : destination;
-}
-
 and runtime = {
-  stack : stack_frame;
+  stack : Stack.frame;
   heap : Heap.heap;
   code : command array;
   stdin : string;
@@ -57,21 +47,14 @@ and runtime = {
   keep_instrs : int;
 }
 
-let string_of_operand_dyn r f op =
+let string_of_operand_dyn r (f : Stack.frame) op =
   match op with
   | Number x -> string_of_int x
-  | Register x -> (
-      match f.locals.(x) with
-      | Value.Number y -> Printf.sprintf "r%d=%d" x y
-      | Pointer y ->
-          Printf.sprintf "r%d->(*%d)%s" x y.idx
-            (Heap.string_of_obj r.heap (Pointer y)))
-  | Argument x -> (
-      match f.args.(x) with
-      | Value.Number y -> Printf.sprintf "a%d=%d" x y
-      | Pointer y ->
-          Printf.sprintf "a%d->(*%d)%s" x y.idx
-            (Heap.string_of_obj r.heap (Pointer y)))
+  | Location x ->
+      let v = Stack.load f x in
+      let loc = Stack.string_of_location x in
+      let obj = Heap.string_of_obj ~include_ptr:true r.heap v in
+      Printf.sprintf "%s->%s" loc obj
   | Null -> "Null"
   | Ip -> "Ip"
 
@@ -85,7 +68,7 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
   let string_of_tgt a =
     match a with
     | Static x -> string_of_int x
-    | Dynamic x -> sov ("r" ^ string_of_int x) (Register x)
+    | Dynamic x -> sov (Stack.string_of_location x) (Location x)
     | Relative x -> (
         let s = if x >= 0 then "+" ^ string_of_int x else string_of_int x in
         match ctx with
@@ -97,10 +80,9 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
     | Ip -> "Ip"
     | Null -> "Null"
     | Number x -> string_of_int x
-    | Register x -> sov ("r" ^ string_of_int x) (Register x)
-    | Argument x -> sov ("a" ^ string_of_int x) (Argument x)
+    | Location x -> sov (Stack.string_of_location x) (Location x)
   in
-  let string_of_dest a = match a with Register x -> "r" ^ string_of_int x in
+  let string_of_dest a = Stack.string_of_location a in
   let s =
     match c with
     | Halt -> "Halt"
@@ -181,7 +163,7 @@ let create source code main =
         ip = main;
         args = [||];
         locals = [||];
-        return = Register 0;
+        result = Stack.Void;
       };
     code;
     source;
@@ -204,7 +186,7 @@ let trace ?(flags = 15) r =
 
   if Int.logand flags 2 <> 0 then (
     prerr_string "========= Section 2: Stack Trace ==========\n";
-    let rec stack_trace r f =
+    let rec stack_trace r (f : Stack.frame) =
       let acc =
         match f.caller with Some caller -> stack_trace r caller | None -> "\n"
       in
@@ -252,10 +234,12 @@ let trace ?(flags = 15) r =
   if Int.logand flags 8 <> 0 then (
     prerr_string "====== Section 4: Current Registers =======\n";
     Array.iteri
-      (fun i _ -> prerr_endline @@ string_of_operand_dyn r r.stack (Argument i))
+      (fun i _ ->
+        prerr_endline @@ string_of_operand_dyn r r.stack (Location (Argument i)))
       r.stack.args;
     Array.iteri
-      (fun i _ -> prerr_endline @@ string_of_operand_dyn r r.stack (Register i))
+      (fun i _ ->
+        prerr_endline @@ string_of_operand_dyn r r.stack (Location (Register i)))
       r.stack.locals)
   else ();
 
@@ -269,7 +253,7 @@ let finished r =
 let step r =
   try
     let get_active r () =
-      let rec get_active' r stack =
+      let rec get_active' r (stack : Stack.frame) =
         let active_in_array arr =
           Array.fold_left
             (fun active v ->
@@ -290,16 +274,12 @@ let step r =
       get_active' r r.stack
     in
     let next r = { r with stack = { r.stack with ip = r.stack.ip + 1 } } in
-    let store r addr x =
-      match addr with Register a -> r.stack.locals.(a) <- x
-    in
     let op_to_val r op =
       match op with
       | Ip -> Value.Number r.stack.ip
       | Null -> Value.null
       | Number x -> Value.Number x
-      | Register x -> r.stack.locals.(x)
-      | Argument x -> r.stack.args.(x)
+      | Location x -> Stack.load r.stack x
     in
     let val_to_int v =
       match v with Value.Number x -> x | Pointer _ -> failwith "Not a number"
@@ -307,14 +287,11 @@ let step r =
     let val_to_ptr v =
       match v with Value.Pointer x -> x | Number _ -> failwith "Not a ptr"
     in
-    let dest_to_val r d =
-      match d with Register x -> op_to_val r (Register x)
-    in
     let get_ip r addr =
       match addr with
       | Static x -> x
       | Dynamic x -> (
-          match r.stack.locals.(x) with
+          match Stack.load r.stack x with
           | Value.Number y -> y
           | _ -> failwith "Todo")
       | Relative x -> r.stack.ip + x
@@ -351,26 +328,27 @@ let step r =
               };
           }
     | Add (dest, lhs, rhs) ->
-        store r dest
+        Stack.store r.stack dest
           (Value.Number
              ((op_to_val r lhs |> val_to_int) + (op_to_val r rhs |> val_to_int)));
         next r
     | Sub (dest, lhs, rhs) ->
-        store r dest
+        Stack.store r.stack dest
           (Value.Number
              ((op_to_val r lhs |> val_to_int) - (op_to_val r rhs |> val_to_int)));
         next r
     | Assign (dest, src) ->
-        store r dest (op_to_val r src);
+        Stack.store r.stack dest (op_to_val r src);
         next r
     | Call (dest, args, fn) ->
-        let callee =
+        let caller = { r.stack with result = dest } in
+        let (callee : Stack.frame) =
           {
             start = get_ip r fn;
             locals = [||];
             args = Array.map (fun x -> op_to_val r x) args;
-            caller = Some r.stack;
-            return = dest;
+            caller = Some caller;
+            result = Void;
             ip = get_ip r fn;
           }
         in
@@ -383,9 +361,8 @@ let step r =
           | None ->
               Error.fail_at_spot r.source "Stack underflow" cmd.loc Error.Eval
         in
-        let r' = { r with stack = caller } in
-        store r' callee.return (op_to_val r v);
-        next r'
+        Stack.store caller caller.result (op_to_val r v);
+        next { r with stack = caller }
     | Builtin (args, "print") ->
         let s, _ =
           Array.fold_left
@@ -413,7 +390,7 @@ let step r =
         else next r
     | New dest ->
         let h, ptr = Heap.alloc r.heap in
-        (match dest with Register x -> r.stack.locals.(x) <- ptr);
+        Stack.store r.stack dest ptr;
         next { r with heap = h }
     | Free op ->
         let ptr = op_to_val r op in
@@ -426,16 +403,16 @@ let step r =
     | DisableGc -> next { r with gc_on = false }
     | EnableGc -> next { r with gc_on = true }
     | Resize (arr, len) ->
-        let arr = dest_to_val r arr in
+        let arr = Stack.load r.stack arr in
         let len = op_to_val r len |> val_to_int in
         let h = Heap.resize r.heap arr len in
         next { r with heap = h }
     | Size (dest, arr) ->
         let arr = op_to_val r arr in
-        store r dest @@ Value.Number (Heap.length r.heap arr);
+        Stack.store r.stack dest @@ Value.Number (Heap.length r.heap arr);
         next r
     | IndexSet (dest, idx, x) ->
-        let arr = dest_to_val r dest in
+        let arr = Stack.load r.stack dest in
         let idx = op_to_val r idx |> val_to_int in
         let x = op_to_val r x in
         let h = Heap.index_set r.heap arr idx x in
@@ -443,16 +420,16 @@ let step r =
     | IndexGet (dest, arr, idx) ->
         let arr = op_to_val r arr in
         let idx = op_to_val r idx |> val_to_int in
-        store r dest (Heap.index_get r.heap arr idx);
+        Stack.store r.stack dest (Heap.index_get r.heap arr idx);
         next r
     | Load (dest, op) ->
         let ptr = op_to_val r op in
         let x = Heap.load r.heap ptr in
-        store r dest (Value.Number x);
+        Stack.store r.stack dest (Value.Number x);
         next r
     | Store (dest, op) ->
         let x = op_to_val r op |> val_to_int in
-        let ptr = dest_to_val r dest in
+        let ptr = Stack.load r.stack dest in
         let h = Heap.store r.heap ptr x in
         next { r with heap = h }
     | _ -> failwith "Todo"

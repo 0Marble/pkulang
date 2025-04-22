@@ -148,39 +148,42 @@ let field_set h ptr fname x =
       h
   | _ -> failwith "Not an object"
 
-let rec string_of_obj h ptr =
+let rec string_of_obj ?(include_ptr = false) h ptr =
   match ptr with
   | Value.Number x -> string_of_int x
-  | Value.Pointer ptr -> (
+  | Value.Pointer ptr ->
       let o = h.memory.(ptr.idx) in
-      match o with
-      | HeapInvalid -> "?"
-      | FreeList x -> "!->*" ^ string_of_int x
-      | HeapNumber x -> string_of_int x
-      | HeapArray a ->
-          let s, _ =
-            Array.fold_left
-              (fun (acc, i) ptr ->
-                let s = string_of_obj h ptr in
-                if i + 1 = Array.length a then (acc ^ s, i + 1)
-                else (acc ^ s ^ ",", i + 1))
-              ("[", 0) a
-          in
-          s ^ "]"
-      | HeapObject obj ->
-          let s, _ =
-            StringMap.fold
-              (fun f ptr (acc, i) ->
-                let s = string_of_obj h ptr in
-                let s =
-                  if i + 1 = StringMap.cardinal obj.fields then
-                    Printf.sprintf "%s%s: %s" acc f s
-                  else Printf.sprintf "%s%s: %s," acc f s
-                in
-                (s, i + 1))
-              obj.fields ("{", 0)
-          in
-          s ^ "}")
+      let s =
+        match o with
+        | HeapInvalid -> "?"
+        | FreeList x -> "!->*" ^ string_of_int x
+        | HeapNumber x -> string_of_int x
+        | HeapArray a ->
+            let s, _ =
+              Array.fold_left
+                (fun (acc, i) ptr ->
+                  let s = string_of_obj h ptr in
+                  if i + 1 = Array.length a then (acc ^ s, i + 1)
+                  else (acc ^ s ^ ",", i + 1))
+                ("[", 0) a
+            in
+            s ^ "]"
+        | HeapObject obj ->
+            let s, _ =
+              StringMap.fold
+                (fun f ptr (acc, i) ->
+                  let s = string_of_obj h ptr in
+                  let s =
+                    if i + 1 = StringMap.cardinal obj.fields then
+                      Printf.sprintf "%s%s: %s" acc f s
+                    else Printf.sprintf "%s%s: %s," acc f s
+                  in
+                  (s, i + 1))
+                obj.fields ("{", 0)
+            in
+            s ^ "}"
+      in
+      if include_ptr then Printf.sprintf "(*%d)%s" ptr.idx s else s
 
 let force_gc h active =
   let rec mark h (ptr : Value.heap_ptr) visited =

@@ -53,12 +53,12 @@ let create_1_page_of_garbage () =
       [
         Alloca 2;
         Assign (Register 0, Number 4096);
-        GotoIfZero (Register 0, Relative 5);
+        GotoIfZero (Location (Register 0), Relative 5);
         New (Register 1);
-        Store (Register 1, Register 0);
-        Sub (Register 0, Register 0, Number 1);
+        Store (Register 1, Location (Register 0));
+        Sub (Register 0, Location (Register 0), Number 1);
         Goto (Relative (-4));
-        Builtin ([| Register 1 |], "print");
+        Builtin ([| Location (Register 1) |], "print");
         Halt;
       ]
       100000
@@ -76,10 +76,10 @@ let a_bunch_of_garbage () =
       [
         Alloca 2;
         Assign (Register 0, Number 100000);
-        GotoIfZero (Register 0, Relative 5);
+        GotoIfZero (Location (Register 0), Relative 5);
         New (Register 1);
-        Store (Register 1, Register 0);
-        Sub (Register 0, Register 0, Number 1);
+        Store (Register 1, Location (Register 0));
+        Sub (Register 0, Location (Register 0), Number 1);
         Goto (Relative (-4));
         Halt;
       ]
@@ -96,10 +96,10 @@ let oom () =
              DisableGc;
              Alloca 2;
              Assign (Register 0, Number 100000);
-             GotoIfZero (Register 0, Relative 5);
+             GotoIfZero (Location (Register 0), Relative 5);
              New (Register 1);
-             Store (Register 1, Register 0);
-             Sub (Register 0, Register 0, Number 1);
+             Store (Register 1, Location (Register 0));
+             Sub (Register 0, Location (Register 0), Number 1);
              Goto (Relative (-4));
              Halt;
            ]
@@ -114,11 +114,11 @@ let array () =
         New (Register 0);
         Resize (Register 0, Number 100);
         Assign (Register 2, Number 100);
-        GotoIfZero (Register 2, Relative 6);
+        GotoIfZero (Location (Register 2), Relative 6);
         New (Register 1);
-        Store (Register 1, Register 2);
-        Sub (Register 2, Register 2, Number 1);
-        IndexSet (Register 0, Register 2, Register 1);
+        Store (Register 1, Location (Register 2));
+        Sub (Register 2, Location (Register 2), Number 1);
+        IndexSet (Register 0, Location (Register 2), Location (Register 1));
         Goto (Relative (-5));
         Assign (Register 0, Number 0);
         Assign (Register 1, Number 0);

@@ -1,2 +1,2 @@
-(library (name pkulang) (modules location tokenizer error ast parser trie runtime heap value))
+(library (name pkulang) (modules location tokenizer error ast parser trie runtime heap value stack))
 

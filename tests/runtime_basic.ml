@@ -27,7 +27,7 @@ let print () =
        [
          Alloca 1;
          Assign (Register 0, Number 10);
-         Builtin ([| Register 0 |], "print");
+         Builtin ([| Location (Register 0) |], "print");
          Halt;
        ]
        10)
@@ -49,11 +49,11 @@ let call () =
        [
          Alloca 1;
          Call (Register 0, [| Number 6; Number 4 |], Static 4);
-         Builtin ([| Register 0 |], "print");
+         Builtin ([| Location (Register 0) |], "print");
          Halt;
          Alloca 1;
-         Add (Register 0, Argument 0, Argument 1);
-         Ret (Register 0);
+         Add (Register 0, Location (Argument 0), Location (Argument 1));
+         Ret (Location (Register 0));
        ]
        100);
   check string "nested call" "20\n"
@@ -61,15 +61,15 @@ let call () =
        [
          Alloca 1;
          Call (Register 0, [| Number 6; Number 4 |], Static 4);
-         Builtin ([| Register 0 |], "print");
+         Builtin ([| Location (Register 0) |], "print");
          Halt;
          Alloca 1;
-         Add (Register 0, Argument 0, Argument 1);
-         Call (Register 0, [| Register 0 |], Static 8);
-         Ret (Register 0);
+         Add (Register 0, Location (Argument 0), Location (Argument 1));
+         Call (Register 0, [| Location (Register 0) |], Static 8);
+         Ret (Location (Register 0));
          Alloca 1;
-         Add (Register 0, Argument 0, Argument 0);
-         Ret (Register 0);
+         Add (Register 0, Location (Argument 0), Location (Argument 0));
+         Ret (Location (Register 0));
        ]
        100)
 
@@ -121,7 +121,7 @@ let goto () =
        [
          Alloca 1;
          Add (Register 0, Ip, Number 3);
-         Goto (Dynamic 0);
+         Goto (Dynamic (Register 0));
          Trap;
          Builtin ([| Number 10 |], "print");
          Halt;
@@ -135,18 +135,18 @@ let fib () =
          (* 0: main *)
          Alloca 1;
          Call (Register 0, [| Number 20 |], Static 4);
-         Builtin ([| Register 0 |], "print");
+         Builtin ([| Location (Register 0) |], "print");
          Halt;
          (* 4: fib *)
          Alloca 2;
-         Sub (Register 0, Argument 0, Number 1);
-         Sub (Register 1, Argument 0, Number 2);
-         GotoIfNeg (Register 1, Static 12);
-         Call (Register 0, [| Register 0 |], Static 4);
-         Call (Register 1, [| Register 1 |], Static 4);
-         Add (Register 0, Register 0, Register 1);
-         Ret (Register 0);
-         Ret (Argument 0);
+         Sub (Register 0, Location (Argument 0), Number 1);
+         Sub (Register 1, Location (Argument 0), Number 2);
+         GotoIfNeg (Location (Register 1), Static 12);
+         Call (Register 0, [| Location (Register 0) |], Static 4);
+         Call (Register 1, [| Location (Register 1) |], Static 4);
+         Add (Register 0, Location (Register 0), Location (Register 1));
+         Ret (Location (Register 0));
+         Ret (Location (Argument 0));
          Trap;
        ]
        150000)
