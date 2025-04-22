@@ -6,7 +6,7 @@ type obj =
   | FreeList of int
   | HeapNumber of int
   | HeapArray of Value.value array
-  | HeapObject of { fields : Value.value StringMap.t }
+  | HeapObject of { fields : Value.value StringMap.t; order : string list }
   | Coroutine of Stack.frame
 
 type heap = {
@@ -133,14 +133,22 @@ let index_get h ptr idx =
 let add_field h ptr fname =
   let ptr = ptr_valid h ptr in
   match h.memory.(ptr.idx) with
+  | HeapInvalid ->
+      h.memory.(ptr.idx) <-
+        HeapObject
+          {
+            fields = StringMap.empty |> StringMap.add fname Value.null;
+            order = [ fname ];
+          };
+      h
   | HeapObject obj ->
-      let h, new_fields =
+      let new_fields =
         if StringMap.mem fname obj.fields then failwith "Field already exists"
-        else
-          let h, ptr = alloc h in
-          (h, StringMap.add fname ptr obj.fields)
+        else StringMap.add fname Value.null obj.fields
       in
-      h.memory.(ptr.idx) <- HeapObject { fields = new_fields };
+      h.memory.(ptr.idx) <-
+        HeapObject
+          { fields = new_fields; order = List.append obj.order [ fname ] };
       h
   | _ -> failwith "Not an object"
 
@@ -155,7 +163,7 @@ let field_set h ptr fname x =
   match h.memory.(ptr.idx) with
   | HeapObject obj ->
       let fields = StringMap.add fname x obj.fields in
-      h.memory.(ptr.idx) <- HeapObject { fields };
+      h.memory.(ptr.idx) <- HeapObject { obj with fields };
       h
   | _ -> failwith "Not an object"
 
@@ -181,16 +189,17 @@ let rec string_of_obj ?(include_ptr = false) h ptr =
             s ^ "]"
         | HeapObject obj ->
             let s, _ =
-              StringMap.fold
-                (fun f ptr (acc, i) ->
+              List.fold_left
+                (fun (acc, i) f ->
+                  let ptr = StringMap.find f obj.fields in
                   let s = string_of_obj h ptr in
                   let s =
                     if i + 1 = StringMap.cardinal obj.fields then
                       Printf.sprintf "%s%s: %s" acc f s
-                    else Printf.sprintf "%s%s: %s," acc f s
+                    else Printf.sprintf "%s%s: %s, " acc f s
                   in
                   (s, i + 1))
-                obj.fields ("{", 0)
+                ("{", 0) obj.order
             in
             s ^ "}"
         | Coroutine f -> "crt-" ^ string_of_int f.start
