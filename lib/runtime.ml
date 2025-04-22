@@ -17,6 +17,9 @@ type command_kind =
   | GotoIfNull of (operand * jump_target)
   | Call of (Stack.location * operand array * jump_target)
   | Ret of operand
+  | Create of (Stack.location * operand array * jump_target)
+  | Resume of (Stack.location * operand * operand)
+  | Yield of (Stack.location * operand)
   | Alloca of int
   | New of Stack.location
   | Free of operand
@@ -116,6 +119,19 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
           ^ "]")
           (string_of_tgt fn)
     | Ret op -> "Ret " ^ string_of_operand op
+    | Create (dest, args, fn) ->
+        Printf.sprintf "Create %s %s %s" (string_of_dest dest)
+          (Array.fold_left
+             (fun acc op -> acc ^ string_of_operand op ^ ",")
+             "[" args
+          ^ "]")
+          (string_of_tgt fn)
+    | Resume (dest, arg, co) ->
+        Printf.sprintf "Resume %s %s %s" (string_of_dest dest)
+          (string_of_operand arg) (string_of_operand co)
+    | Yield (dest, op) ->
+        Printf.sprintf "Yield %s %s" (string_of_dest dest)
+          (string_of_operand op)
     | Alloca amt -> "Alloca " ^ string_of_int amt
     | New dst -> "New " ^ string_of_dest dst
     | Free op -> "Free " ^ string_of_operand op
@@ -158,6 +174,7 @@ let create source code main =
     stdin = "";
     stack =
       {
+        ptr = Value.null;
         start = main;
         caller = None;
         ip = main;
@@ -254,22 +271,13 @@ let step r =
   try
     let get_active r () =
       let rec get_active' r (stack : Stack.frame) =
-        let active_in_array arr =
-          Array.fold_left
-            (fun active v ->
-              match v with
-              | Value.Number _ -> active
-              | Pointer ptr -> ptr :: active)
-            [] arr
-        in
-        let locals = active_in_array stack.locals in
-        let args = active_in_array stack.args in
+        let active = Stack.get_active stack in
         let next =
           match stack.caller with
           | Some stack -> get_active' r stack
           | None -> []
         in
-        List.concat [ locals; args; next ]
+        List.append active next
       in
       get_active' r r.stack
     in
@@ -344,6 +352,7 @@ let step r =
         let caller = { r.stack with result = dest } in
         let (callee : Stack.frame) =
           {
+            ptr = Value.null;
             start = get_ip r fn;
             locals = [||];
             args = Array.map (fun x -> op_to_val r x) args;
@@ -362,6 +371,40 @@ let step r =
               Error.fail_at_spot r.source "Stack underflow" cmd.loc Error.Eval
         in
         Stack.store caller caller.result (op_to_val r v);
+        next { r with stack = caller }
+    | Create (dest, args, fn) ->
+        let h, ptr = Heap.alloc r.heap in
+        let (co : Stack.frame) =
+          {
+            ptr;
+            start = get_ip r fn;
+            locals = [||];
+            args = Array.map (fun x -> op_to_val r x) args;
+            caller = None;
+            result = Void;
+            ip = get_ip r fn;
+          }
+        in
+        Heap.store_coroutine h ptr co;
+        Stack.store r.stack dest ptr;
+        next { r with heap = h }
+    | Resume (dest, arg, co) ->
+        let ptr = op_to_val r co in
+        let h, co = Heap.get_coroutine r.heap ptr in
+        let caller = { r.stack with result = dest } in
+        let callee = { co with caller = Some caller } in
+        Stack.store callee callee.result @@ op_to_val r arg;
+        { r with heap = h; stack = callee }
+    | Yield (dest, op) ->
+        let v = op_to_val r op in
+        let callee = { r.stack with result = dest; ip = r.stack.ip + 1 } in
+        let caller =
+          match callee.caller with
+          | Some caller -> caller
+          | None -> failwith "Stack underflow"
+        in
+        Stack.store caller caller.result v;
+        Heap.store_coroutine r.heap callee.ptr callee;
         next { r with stack = caller }
     | Builtin (args, "print") ->
         let s, _ =

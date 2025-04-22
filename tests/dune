@@ -32,3 +32,8 @@
  (name runtime_gc)
  (modules runtime_gc)
  (libraries pkulang alcotest))
+
+(test
+ (name runtime_coroutines)
+ (modules runtime_coroutines)
+ (libraries pkulang alcotest))

@@ -7,6 +7,7 @@ type obj =
   | HeapNumber of int
   | HeapArray of Value.value array
   | HeapObject of { fields : Value.value StringMap.t }
+  | Coroutine of Stack.frame
 
 type heap = {
   memory : obj array;
@@ -63,6 +64,16 @@ let dealloc h ptr =
   let ptr = ptr_valid h ptr in
   h.memory.(ptr.idx) <- FreeList h.free;
   { h with free = ptr.idx; used_size = h.used_size - 1 }
+
+let store_coroutine h ptr f =
+  let ptr = ptr_valid h ptr in
+  h.memory.(ptr.idx) <- Coroutine f
+
+let get_coroutine h ptr =
+  let ptr' = ptr_valid h ptr in
+  match h.memory.(ptr'.idx) with
+  | Coroutine f -> (h, { f with ptr })
+  | _ -> failwith "not a coroutine"
 
 let resize h ptr new_len =
   let ptr = ptr_valid h ptr in
@@ -182,6 +193,7 @@ let rec string_of_obj ?(include_ptr = false) h ptr =
                 obj.fields ("{", 0)
             in
             s ^ "}"
+        | Coroutine f -> "crt-" ^ string_of_int f.start
       in
       if include_ptr then Printf.sprintf "(*%d)%s" ptr.idx s else s
 
@@ -210,6 +222,12 @@ let force_gc h active =
                 if IntSet.mem ptr.idx visited then visited
                 else mark h ptr visited)
           o.fields visited
+    | Coroutine f ->
+        let active = Stack.get_active f in
+        List.fold_left
+          (fun visited (elem : Value.heap_ptr) ->
+            if IntSet.mem elem.idx visited then visited else mark h elem visited)
+          visited active
   in
   let rec sweep h i accessible =
     if i >= h.max_address then h

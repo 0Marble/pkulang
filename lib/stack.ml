@@ -4,6 +4,7 @@ exception InvalidLocation of location
 exception WriteToVoid
 
 type frame = {
+  ptr : Value.value;
   start : int;
   args : Value.value array;
   locals : Value.value array;
@@ -40,3 +41,14 @@ let load f loc =
   | Register x -> f.locals.(x)
   | Argument x -> f.args.(x)
   | Void -> raise WriteToVoid
+
+let get_active f =
+  let active_in_array arr =
+    Array.fold_left
+      (fun active v ->
+        match v with Value.Number _ -> active | Pointer ptr -> ptr :: active)
+      [] arr
+  in
+  let locals = active_in_array f.locals in
+  let args = active_in_array f.args in
+  List.append locals args
