@@ -84,6 +84,21 @@ let length () =
        ]
        10)
 
+let inline_ints () =
+  check string "array of ints" "[1,2,3]\n"
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         Resize (Register 0, Number 3);
+         IndexSet (Register 0, Number 0, Number 1);
+         IndexSet (Register 0, Number 1, Number 2);
+         IndexSet (Register 0, Number 2, Number 3);
+         Builtin ([| Register 0 |], "print");
+         Halt;
+       ]
+       100)
+
 let range () =
   check string "range(0, 10)" "[0,1,2,3,4,5,6,7,8,9]\n"
     (interpret
@@ -210,6 +225,11 @@ let sort () =
 let () =
   run "Runtime: arrays"
     [
-      ("basic", [ ("print", `Quick, array_print); ("length", `Quick, length) ]);
+      ( "basic",
+        [
+          ("print", `Quick, array_print);
+          ("length", `Quick, length);
+          ("inline_ints", `Quick, inline_ints);
+        ] );
       ("programs", [ ("range", `Quick, range); ("qsort", `Quick, sort) ]);
     ]

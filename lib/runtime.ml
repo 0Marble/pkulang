@@ -1,6 +1,5 @@
 module IntSet = Set.Make (Int)
 
-type value = DynNumber of int | DynPtr of Heap.heap_ptr
 type operand = Number of int | Null | Ip | Register of int | Argument of int
 type destination = Register of int
 type jump_target = Static of int | Relative of int | Dynamic of int
@@ -38,8 +37,8 @@ type command = { cmd : command_kind; loc : Location.location }
 
 type stack_frame = {
   start : int;
-  args : value array;
-  locals : value array;
+  args : Value.value array;
+  locals : Value.value array;
   caller : stack_frame option;
   ip : int;
   return : destination;
@@ -63,14 +62,16 @@ let string_of_operand_dyn r f op =
   | Number x -> string_of_int x
   | Register x -> (
       match f.locals.(x) with
-      | DynNumber y -> Printf.sprintf "r%d=%d" x y
-      | DynPtr y ->
-          Printf.sprintf "r%d->(*%d)%s" x y.idx (Heap.string_of_obj r.heap y))
+      | Value.Number y -> Printf.sprintf "r%d=%d" x y
+      | Pointer y ->
+          Printf.sprintf "r%d->(*%d)%s" x y.idx
+            (Heap.string_of_obj r.heap (Pointer y)))
   | Argument x -> (
       match f.args.(x) with
-      | DynNumber y -> Printf.sprintf "a%d=%d" x y
-      | DynPtr y ->
-          Printf.sprintf "a%d->(*%d)%s" x y.idx (Heap.string_of_obj r.heap y))
+      | Value.Number y -> Printf.sprintf "a%d=%d" x y
+      | Pointer y ->
+          Printf.sprintf "a%d->(*%d)%s" x y.idx
+            (Heap.string_of_obj r.heap (Pointer y)))
   | Null -> "Null"
   | Ip -> "Ip"
 
@@ -272,7 +273,9 @@ let step r =
         let active_in_array arr =
           Array.fold_left
             (fun active v ->
-              match v with DynNumber _ -> active | DynPtr ptr -> ptr :: active)
+              match v with
+              | Value.Number _ -> active
+              | Pointer ptr -> ptr :: active)
             [] arr
         in
         let locals = active_in_array stack.locals in
@@ -292,17 +295,17 @@ let step r =
     in
     let op_to_val r op =
       match op with
-      | Ip -> DynNumber r.stack.ip
-      | Null -> DynPtr { idx = 0 }
-      | Number x -> DynNumber x
+      | Ip -> Value.Number r.stack.ip
+      | Null -> Value.null
+      | Number x -> Value.Number x
       | Register x -> r.stack.locals.(x)
       | Argument x -> r.stack.args.(x)
     in
     let val_to_int v =
-      match v with DynNumber x -> x | DynPtr _ -> failwith "Not a number"
+      match v with Value.Number x -> x | Pointer _ -> failwith "Not a number"
     in
     let val_to_ptr v =
-      match v with DynPtr x -> x | DynNumber _ -> failwith "Not a ptr"
+      match v with Value.Pointer x -> x | Number _ -> failwith "Not a ptr"
     in
     let dest_to_val r d =
       match d with Register x -> op_to_val r (Register x)
@@ -312,7 +315,7 @@ let step r =
       | Static x -> x
       | Dynamic x -> (
           match r.stack.locals.(x) with
-          | DynNumber y -> y
+          | Value.Number y -> y
           | _ -> failwith "Todo")
       | Relative x -> r.stack.ip + x
     in
@@ -344,17 +347,17 @@ let step r =
               {
                 r.stack with
                 locals =
-                  Array.append r.stack.locals (Array.make amt (DynNumber 0));
+                  Array.append r.stack.locals (Array.make amt (Value.Number 0));
               };
           }
     | Add (dest, lhs, rhs) ->
         store r dest
-          (DynNumber
+          (Value.Number
              ((op_to_val r lhs |> val_to_int) + (op_to_val r rhs |> val_to_int)));
         next r
     | Sub (dest, lhs, rhs) ->
         store r dest
-          (DynNumber
+          (Value.Number
              ((op_to_val r lhs |> val_to_int) - (op_to_val r rhs |> val_to_int)));
         next r
     | Assign (dest, src) ->
@@ -387,11 +390,7 @@ let step r =
         let s, _ =
           Array.fold_left
             (fun (acc, i) op ->
-              let s =
-                match op_to_val r op with
-                | DynNumber x -> string_of_int x
-                | DynPtr x -> Heap.string_of_obj r.heap x
-              in
+              let s = Heap.string_of_obj r.heap @@ op_to_val r op in
               if i + 1 = Array.length args then (acc ^ s, i + 1)
               else (acc ^ s ^ ", ", i + 1))
             ("", 0) args
@@ -414,10 +413,10 @@ let step r =
         else next r
     | New dest ->
         let h, ptr = Heap.alloc r.heap in
-        (match dest with Register x -> r.stack.locals.(x) <- DynPtr ptr);
+        (match dest with Register x -> r.stack.locals.(x) <- ptr);
         next { r with heap = h }
     | Free op ->
-        let ptr = op_to_val r op |> val_to_ptr in
+        let ptr = op_to_val r op in
         let h = Heap.dealloc r.heap ptr in
         next { r with heap = h }
     | ForceGc ->
@@ -427,33 +426,33 @@ let step r =
     | DisableGc -> next { r with gc_on = false }
     | EnableGc -> next { r with gc_on = true }
     | Resize (arr, len) ->
-        let arr = dest_to_val r arr |> val_to_ptr in
+        let arr = dest_to_val r arr in
         let len = op_to_val r len |> val_to_int in
         let h = Heap.resize r.heap arr len in
         next { r with heap = h }
     | Size (dest, arr) ->
-        let arr = op_to_val r arr |> val_to_ptr in
-        store r dest @@ DynNumber (Heap.length r.heap arr);
+        let arr = op_to_val r arr in
+        store r dest @@ Value.Number (Heap.length r.heap arr);
         next r
     | IndexSet (dest, idx, x) ->
-        let arr = dest_to_val r dest |> val_to_ptr in
+        let arr = dest_to_val r dest in
         let idx = op_to_val r idx |> val_to_int in
-        let x = op_to_val r x |> val_to_ptr in
+        let x = op_to_val r x in
         let h = Heap.index_set r.heap arr idx x in
         next { r with heap = h }
     | IndexGet (dest, arr, idx) ->
-        let arr = op_to_val r arr |> val_to_ptr in
+        let arr = op_to_val r arr in
         let idx = op_to_val r idx |> val_to_int in
-        store r dest @@ DynPtr (Heap.index_get r.heap arr idx);
+        store r dest (Heap.index_get r.heap arr idx);
         next r
     | Load (dest, op) ->
-        let ptr = op_to_val r op |> val_to_ptr in
+        let ptr = op_to_val r op in
         let x = Heap.load r.heap ptr in
-        store r dest (DynNumber x);
+        store r dest (Value.Number x);
         next r
     | Store (dest, op) ->
         let x = op_to_val r op |> val_to_int in
-        let ptr = dest_to_val r dest |> val_to_ptr in
+        let ptr = dest_to_val r dest in
         let h = Heap.store r.heap ptr x in
         next { r with heap = h }
     | _ -> failwith "Todo"
