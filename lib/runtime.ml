@@ -21,6 +21,10 @@ type command_kind =
   | Ret of operand
   | Alloca of int
   | New of destination
+  | Free of operand
+  | ForceGc
+  | DisableGc
+  | EnableGc
   | Resize of (destination * operand)
   | Size of (destination * operand)
   | AddField of (destination * string)
@@ -48,6 +52,7 @@ and runtime = {
   stdin : string;
   stdout : string;
   source : string;
+  gc_on : bool;
   (* tracing *)
   last_instrs : int Queue.t;
   keep_instrs : int;
@@ -130,6 +135,10 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
     | Ret op -> "Ret " ^ string_of_operand op
     | Alloca amt -> "Alloca " ^ string_of_int amt
     | New dst -> "New " ^ string_of_dest dst
+    | Free op -> "Free " ^ string_of_operand op
+    | ForceGc -> "ForceGc"
+    | DisableGc -> "DisableGc"
+    | EnableGc -> "EnableGc"
     | Resize (arr, size) ->
         Printf.sprintf "Resize %s %s" (string_of_dest arr)
           (string_of_operand size)
@@ -161,6 +170,7 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
 let create source code main =
   {
     heap = Heap.create ();
+    gc_on = true;
     stdout = "";
     stdin = "";
     stack =
@@ -257,6 +267,25 @@ let finished r =
 
 let step r =
   try
+    let get_active r () =
+      let rec get_active' r stack =
+        let active_in_array arr =
+          Array.fold_left
+            (fun active v ->
+              match v with DynNumber _ -> active | DynPtr ptr -> ptr :: active)
+            [] arr
+        in
+        let locals = active_in_array stack.locals in
+        let args = active_in_array stack.args in
+        let next =
+          match stack.caller with
+          | Some stack -> get_active' r stack
+          | None -> []
+        in
+        List.concat [ locals; args; next ]
+      in
+      get_active' r r.stack
+    in
     let next r = { r with stack = { r.stack with ip = r.stack.ip + 1 } } in
     let store r addr x =
       match addr with Register a -> r.stack.locals.(a) <- x
@@ -288,6 +317,10 @@ let step r =
       | Relative x -> r.stack.ip + x
     in
 
+    let r =
+      if r.gc_on then { r with heap = Heap.maybe_gc r.heap (get_active r) }
+      else r
+    in
     let cmd = r.code.(r.stack.ip) in
 
     if Queue.length r.last_instrs >= r.keep_instrs then
@@ -383,6 +416,16 @@ let step r =
         let h, ptr = Heap.alloc r.heap in
         (match dest with Register x -> r.stack.locals.(x) <- DynPtr ptr);
         next { r with heap = h }
+    | Free op ->
+        let ptr = op_to_val r op |> val_to_ptr in
+        let h = Heap.dealloc r.heap ptr in
+        next { r with heap = h }
+    | ForceGc ->
+        let active = get_active r () in
+        let h = Heap.force_gc r.heap active in
+        next { r with heap = h }
+    | DisableGc -> next { r with gc_on = false }
+    | EnableGc -> next { r with gc_on = true }
     | Resize (arr, len) ->
         let arr = dest_to_val r arr |> val_to_ptr in
         let len = op_to_val r len |> val_to_int in

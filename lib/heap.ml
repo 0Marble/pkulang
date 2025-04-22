@@ -24,7 +24,9 @@ type heap = {
 exception InvalidPtr of heap_ptr
 exception OOM
 
-let ptr_valid h ptr = ptr.idx >= 1024 && ptr.idx < h.free
+let ptr_valid h ptr =
+  if not (ptr.idx >= 1024 && ptr.idx < h.max_address) then false
+  else match h.memory.(ptr.idx) with FreeList _ -> false | _ -> true
 
 let create () =
   let size = Int.shift_left 1 16 in
@@ -40,15 +42,16 @@ let create () =
 
 let alloc h =
   let slot = h.free in
-  let next_free, max_address =
-    match h.memory.(slot) with
-    | FreeList next_free -> (next_free, h.max_address)
-    | _ ->
-        if h.max_address >= Array.length h.memory then raise OOM
-        else (slot + 1, h.max_address + 1)
-  in
-  ( { h with free = next_free; used_size = h.used_size + 1; max_address },
-    { idx = slot } )
+  if slot >= Array.length h.memory then raise OOM
+  else
+    let next_free, max_address =
+      match h.memory.(slot) with
+      | FreeList next_free -> (next_free, h.max_address)
+      | _ -> (slot + 1, h.max_address + 1)
+    in
+    h.memory.(slot) <- HeapInvalid;
+    ( { h with free = next_free; used_size = h.used_size + 1; max_address },
+      { idx = slot } )
 
 let dealloc h ptr =
   h.memory.(ptr.idx) <- FreeList h.free;
@@ -150,7 +153,8 @@ let field_set h ptr fname x =
 let rec string_of_obj h ptr =
   let o = h.memory.(ptr.idx) in
   match o with
-  | HeapInvalid | FreeList _ -> "?"
+  | HeapInvalid -> "?"
+  | FreeList x -> "!->*" ^ string_of_int x
   | HeapNumber x -> string_of_int x
   | HeapArray a ->
       let s, _ =
@@ -177,7 +181,7 @@ let rec string_of_obj h ptr =
       in
       s ^ "}"
 
-let maybe_gc h active =
+let force_gc h active =
   let rec mark h ptr visited =
     match h.memory.(ptr.idx) with
     | FreeList _ -> failwith "Shouldnt be accessable"
@@ -206,12 +210,12 @@ let maybe_gc h active =
             let h = dealloc h { idx = i } in
             sweep h (i + 1) accessible
   in
+  let accessible =
+    List.fold_left (fun visited root -> mark h root visited) IntSet.empty active
+  in
+  let h' = sweep h h.min_address accessible in
+  { h' with prev_gc = h.used_size }
+
+let maybe_gc h get_active =
   if h.used_size / h.gc_threshold = h.prev_gc / h.gc_threshold then h
-  else
-    let accessable =
-      List.fold_left
-        (fun visited root -> mark h root visited)
-        IntSet.empty active
-    in
-    let h' = sweep h h.min_address accessable in
-    { h' with prev_gc = h.used_size }
+  else force_gc h (get_active ())
