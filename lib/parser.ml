@@ -1,6 +1,6 @@
 open Tokenizer
 
-type parser_state = { src : string; toks : token list }
+type parser_state = { src : string; toks : token list; next_idx : int }
 
 let priority = Hashtbl.create 20;;
 
@@ -27,6 +27,7 @@ let next_tok p =
 
 let peek_tok p = match p.toks with t :: _ -> Some t | [] -> None
 let peek_tok_kind p = match p.toks with t :: _ -> Some t.kind | [] -> None
+let next_idx p = { p with next_idx = p.next_idx + 1 }
 
 let eat_tok t p =
   let next, p = next_tok p in
@@ -69,13 +70,6 @@ let rec skip_until_tok t p =
       if x.kind = t then Some p else skip_until_tok t { p with toks = rest }
   | _ -> None
 
-let print_expr_situation p stack =
-  Printf.printf "[";
-  List.iter (fun n -> Printf.printf "%s," (Ast.node_to_str n)) @@ List.rev stack;
-  Printf.printf "] [";
-  List.iter (fun t -> Printf.printf "%s," (tok_to_str t)) p.toks;
-  Printf.printf "]\n"
-
 let rec parse_expr_list p =
   let rec parse_expr_list' p l delim =
     let x, p' = next_tok p in
@@ -100,19 +94,11 @@ let rec parse_expr_list p =
         Error.Unknown
 
 and parse_expr p =
-  let rec parse_expr' p stack stage =
-    (* print_expr_situation p stack; *)
-    let reduce stack =
+  let rec parse_expr' p (stack : Ast.expr list) stage =
+    let reduce (stack : Ast.expr list) : Ast.expr list =
       match stack with
-      | a :: Ast.BinOp op :: b :: ts ->
-          Ast.BinOp
-            {
-              op with
-              rhs = a;
-              lhs = b;
-              loc = Location.union (Ast.node_loc a) (Ast.node_loc b);
-            }
-          :: ts
+      | a :: Ast.BinExpr op :: b :: ts ->
+          Ast.BinExpr { op with rhs = a; lhs = b } :: ts
       | _ -> failwith "Unreachable? in reduce"
     in
 
@@ -125,16 +111,23 @@ and parse_expr p =
     | _, _, 0 ->
         let p, leaf = parse_term p in
         parse_expr' p (leaf :: stack) 1
-    | x, _ :: Ast.BinOp y :: _, 1 -> (
+    | x, _ :: Ast.BinExpr y :: _, 1 -> (
         match
           (Hashtbl.find_opt priority x, Hashtbl.find_opt priority y.op.kind)
         with
         | Some a, Some b ->
             if a <= b then parse_expr' p (reduce stack) 1
             else
-              parse_expr' p'
-                (Ast.BinOp
-                   { lhs = Ast.Invalid; rhs = Ast.Invalid; op = t; loc = t.loc }
+              parse_expr'
+                { p' with next_idx = p'.next_idx + 1 }
+                (Ast.BinExpr
+                   {
+                     lhs = Ast.Invalid;
+                     rhs = Ast.Invalid;
+                     op = t;
+                     loc = t.loc;
+                     node_idx = p'.next_idx;
+                   }
                 :: stack)
                 0
         | _ ->
@@ -145,9 +138,16 @@ and parse_expr p =
           Error.fail_at_spot "Not a binary expression" p.src t.loc
             Error.InvalidExpression
         else
-          parse_expr' p'
-            (Ast.BinOp
-               { lhs = Ast.Invalid; rhs = Ast.Invalid; op = t; loc = t.loc }
+          parse_expr'
+            { p' with next_idx = p'.next_idx + 1 }
+            (Ast.BinExpr
+               {
+                 lhs = Ast.Invalid;
+                 rhs = Ast.Invalid;
+                 op = t;
+                 loc = t.loc;
+                 node_idx = p'.next_idx;
+               }
             :: stack)
             0
     | _ ->
@@ -157,23 +157,37 @@ and parse_expr p =
   let p, rest = parse_expr' p [] 0 in
   match rest with
   | t :: _ :: _ ->
-      Error.fail_at_spot "Unfinished expression" p.src (Ast.node_loc t)
+      Error.fail_at_spot "Unfinished expression" p.src
+        (t |> Ast.expr_to_node |> Ast.node_loc)
         Error.InvalidExpression
   | [ t ] -> (p, t)
   | _ -> failwith "Unreachable? in parse_expr with empty stack as result"
 
-and parse_term p =
+and parse_term p : parser_state * Ast.expr =
   let p' = p in
   let t, p = next_tok p in
-  let p, leaf =
+  let p, (leaf : Ast.expr) =
     match t.kind with
-    | TokIdent -> (p, Ast.Variable { name = t.str; loc = t.loc })
-    | TokNumber -> (p, Ast.Number { num = int_of_string t.str; loc = t.loc })
-    | TokString -> (p, Ast.String { str = t.str; loc = t.loc })
+    | TokIdent ->
+        ( next_idx p,
+          Ast.VarExpr { name = t.str; loc = t.loc; node_idx = p.next_idx } )
+    | TokNumber ->
+        ( next_idx p,
+          Ast.NumExpr
+            { num = int_of_string t.str; loc = t.loc; node_idx = p.next_idx } )
+    | TokString ->
+        ( next_idx p,
+          Ast.StringExpr { str = t.str; loc = t.loc; node_idx = p.next_idx } )
     | TokLs ->
         let start = t.loc in
         let p, elems, _ = parse_expr_list p' in
-        (p, Ast.ArrayLiteral { elems; loc = Location.union start (cur_loc p) })
+        ( next_idx p,
+          Ast.ArrayLiteral
+            {
+              elems;
+              loc = Location.union start (cur_loc p);
+              node_idx = p.next_idx;
+            } )
     | TokLp ->
         let p, e = parse_expr p in
         let t, p = next_tok p in
@@ -183,25 +197,34 @@ and parse_term p =
         else (p, e)
     | TokSub | TokNot | TokAmp | TokMul ->
         let p, e = parse_term p in
-        ( p,
-          Ast.UnaryOp
-            { op = t; sub = e; loc = Location.union t.loc (Ast.node_loc e) } )
+        ( next_idx p,
+          Ast.UnaryExpr
+            {
+              op = t;
+              sub_expr = e;
+              loc = Location.union t.loc (e |> Ast.expr_to_node |> Ast.node_loc);
+              node_idx = p.next_idx;
+            } )
     | TokYield ->
         let p, value = if_not_tok TokSemi (fun _ p -> parse_expr p) p in
-        (p, Ast.Yield { value; loc = t.loc })
+        (next_idx p, Ast.YieldExpr { value; loc = t.loc; node_idx = p.next_idx })
     | TokResume ->
         let p = eat_tok TokLp p in
         let p, coroutine = parse_expr p in
         let p, value = if_tok TokComa (fun _ p -> parse_expr p) p in
         let p = eat_tok TokRp p in
-        (p, Ast.Resume { coroutine; value; loc = t.loc })
+        ( next_idx p,
+          Ast.ResumeExpr
+            { coroutine; value; loc = t.loc; node_idx = p.next_idx } )
     | TokCoroutine ->
-        let p, fn = parse_expr p in
-        (p, Ast.Coroutine { fn; loc = t.loc })
+        let p, coroutine = parse_expr p in
+        ( next_idx p,
+          Ast.CreateExpr
+            { coroutine; params = []; loc = t.loc; node_idx = p.next_idx } )
     | TokNew ->
         let p, typ = parse_type p in
         let p = eat_tok TokLb p in
-        let rec parse_fields p =
+        let rec parse_fields p : parser_state * Ast.field_literal list =
           let peek, _ = next_tok p in
           if peek.kind == TokRb then (p, [])
           else
@@ -212,95 +235,110 @@ and parse_term p =
             let p, value = parse_expr p in
             let next, p' = next_tok p in
             match next.kind with
-            | TokRb -> (p, [ Ast.FieldLiteral { loc; name; value } ])
+            | TokRb ->
+                (next_idx p, [ { loc; name; value; node_idx = p.next_idx } ])
             | TokComa ->
                 let p, rest = parse_fields p' in
-                (p, Ast.FieldLiteral { loc; name; value } :: rest)
+                (next_idx p, { loc; name; value; node_idx = p.next_idx } :: rest)
             | _ ->
                 Error.fail_at_spot "Expected a coma" p.src next.loc
                   Error.Unknown
         in
         let p, fields = parse_fields p in
         let p = eat_tok TokRb p in
-        (p, Ast.New { loc = Ast.node_loc typ; typ; fields })
+        ( next_idx p,
+          Ast.NewExpr
+            {
+              loc = typ |> Ast.type_to_node |> Ast.node_loc;
+              typ;
+              fields;
+              node_idx = p.next_idx;
+            } )
     | _ -> Error.fail_at_spot "Invalid term" p.src t.loc Error.Unknown
   in
-  let rec parse_postfix p leaf =
+  let rec parse_postfix p (leaf : Ast.expr) : parser_state * Ast.expr =
     let t, p' = next_tok p in
     match t.kind with
     | TokLp ->
         let p, args, loc = parse_expr_list p in
-        parse_postfix p
-          (Ast.Call { fn = leaf; args; loc = Location.union t.loc loc })
+        parse_postfix (next_idx p)
+          (Ast.CallExpr
+             {
+               fn = leaf;
+               params = args;
+               loc = Location.union t.loc loc;
+               node_idx = p.next_idx;
+             })
     | TokLs ->
         let p, coords, loc = parse_expr_list p in
-        parse_postfix p
-          (Ast.Index { arr = leaf; coords; loc = Location.union t.loc loc })
+        parse_postfix (next_idx p)
+          (Ast.IndexExpr
+             {
+               arr = leaf;
+               idx = coords;
+               loc = Location.union t.loc loc;
+               node_idx = p.next_idx;
+             })
     | TokDot ->
         let p, field = map_tok TokIdent (fun t _ -> t.str) p' in
-        parse_postfix p
+        parse_postfix (next_idx p)
           (Ast.DotExpr
              {
                field;
                obj = leaf;
-               loc = Location.union (Ast.node_loc leaf) (cur_loc p);
+               loc =
+                 Location.union
+                   (leaf |> Ast.expr_to_node |> Ast.node_loc)
+                   (cur_loc p);
+               node_idx = p.next_idx;
              })
     | _ -> (p, leaf)
   in
   parse_postfix p leaf
 
-and parse_type p =
-  let parse_type_prefix p =
+and parse_type p : parser_state * Ast.typ =
+  let parse_type_prefix p : parser_state * Ast.typ =
     let cur, p = next_tok p in
     match cur.kind with
-    | TokLs -> (
+    | TokLs ->
         let start = cur.loc in
         let p, elem = parse_type p in
-        let p, size = if_tok TokSemi (fun _ p -> parse_expr p) p in
         let p = eat_tok TokRs p in
-        match size with
-        | None ->
-            (p, Ast.SliceType { elem; loc = Location.union start (cur_loc p) })
-        | Some size ->
-            ( p,
-              Ast.ArrayType
-                { elem; size; loc = Location.union start (cur_loc p) } ))
-    | TokIdent -> (p, Ast.NamedType { name = cur.str; loc = cur.loc })
-    | TokAmp ->
-        let p, sub = parse_type p in
-        (p, Ast.PtrType { sub; loc = cur.loc })
+        ( next_idx p,
+          Ast.ArrayType
+            {
+              elem;
+              loc = Location.union start (cur_loc p);
+              node_idx = p.next_idx;
+            } )
+    | TokIdent ->
+        ( next_idx p,
+          Ast.NamedType { name = cur.str; loc = cur.loc; node_idx = p.next_idx }
+        )
     | _ -> Error.fail_at_spot "Invalid type" p.src cur.loc Error.Unknown
   in
-  let rec parse_type_suffix p prev : parser_state * Ast.node =
+  let rec parse_type_suffix p (prev : Ast.typ) : parser_state * Ast.typ =
     let next, p' = next_tok p in
     match next.kind with
     | TokDot ->
         let p, name = map_tok TokIdent (fun t _ -> t.str) p' in
-        parse_type_suffix p
-          (Ast.DotType { parent = prev; child = name; loc = next.loc })
+        parse_type_suffix (next_idx p)
+          (Ast.DotType
+             {
+               parent = prev;
+               child = name;
+               loc = next.loc;
+               node_idx = p.next_idx;
+             })
     | _ -> (p, prev)
   in
   let p, leaf = parse_type_prefix p in
   parse_type_suffix p leaf
 
-and parse_stmt p =
+and parse_stmt p : parser_state * Ast.stmt =
   let p0 = p in
   let t, p = next_tok p in
   match t.kind with
-  | TokColon ->
-      let start = t.loc in
-      let p, label = map_tok TokIdent (fun t _ -> t.str) p in
-      let p, stmt = parse_stmt p in
-      let () =
-        match stmt with
-        | Ast.Block _ | Ast.WhileLoop _ | Ast.ForLoop _ | Ast.IfStmt _ -> ()
-        | x ->
-            Error.fail_at_spot "Not a declaration" p.src (Ast.node_loc x)
-              Error.Unknown
-      in
-      ( p,
-        Ast.LabeledStmt { label; stmt; loc = Location.union start (cur_loc p) }
-      )
   | TokLet ->
       let start = t.loc in
       let p, name = map_tok TokIdent (fun t _ -> t.str) p in
@@ -309,30 +347,41 @@ and parse_stmt p =
       let p = eat_tok TokAssign p in
       let p, value = parse_expr p in
       let p = eat_tok TokSemi p in
-      ( p,
-        Ast.LetStmt { name; typ; value; loc = Location.union start (cur_loc p) }
-      )
+      ( next_idx p,
+        Ast.LetStmt
+          {
+            var_name = name;
+            var_type = typ;
+            value;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokWhile ->
       let start = t.loc in
       let p = eat_tok TokLp p in
-      let p, cond = parse_expr p in
+      let p, condition = parse_expr p in
       let p = eat_tok TokRp p in
       let p, body = parse_stmt p in
-      let p, finally = if_tok TokElse (fun _ p -> parse_stmt p) p in
       let () =
         match body with
         | IfStmt _ | WhileLoop _ | ForLoop _ ->
-            Error.fail_at_spot "Surround with a block" p.src (Ast.node_loc body)
+            Error.fail_at_spot "Surround with a block" p.src
+              (body |> Ast.stmt_to_node |> Ast.node_loc)
               Error.Unknown
         | _ -> ()
       in
-      ( p,
+      ( next_idx p,
         Ast.WhileLoop
-          { cond; body; finally; loc = Location.union start (cur_loc p) } )
+          {
+            condition;
+            body;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokIf ->
       let start = t.loc in
       let p = eat_tok TokLp p in
-      let p, cond = parse_expr p in
+      let p, condition = parse_expr p in
       let p = eat_tok TokRp p in
       let p, if_true = parse_stmt p in
       let p, if_false = if_tok TokElse (fun _ p -> parse_stmt p) p in
@@ -340,12 +389,19 @@ and parse_stmt p =
         match if_true with
         | IfStmt _ | WhileLoop _ | ForLoop _ ->
             Error.fail_at_spot "Surround with a block" p.src
-              (Ast.node_loc if_true) Error.Unknown
+              (if_true |> Ast.stmt_to_node |> Ast.node_loc)
+              Error.Unknown
         | _ -> ()
       in
-      ( p,
+      ( next_idx p,
         Ast.IfStmt
-          { cond; if_true; if_false; loc = Location.union start (cur_loc p) } )
+          {
+            condition;
+            if_true;
+            if_false;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokFor ->
       let start = t.loc in
       let p = eat_tok TokLp p in
@@ -354,43 +410,46 @@ and parse_stmt p =
       let p, iter = parse_expr p in
       let p = eat_tok TokRp p in
       let p, body = parse_stmt p in
-      let p, finally = if_tok TokElse (fun _ p -> parse_stmt p) p in
       let () =
         match body with
         | IfStmt _ | WhileLoop _ | ForLoop _ ->
-            Error.fail_at_spot "Surround by a block" p.src (Ast.node_loc body)
+            Error.fail_at_spot "Surround by a block" p.src
+              (body |> Ast.stmt_to_node |> Ast.node_loc)
               Error.Unknown
         | _ -> ()
       in
-      ( p,
+      ( next_idx p,
         Ast.ForLoop
           {
-            var_name;
-            iter;
+            iter_var = var_name;
+            iterator = iter;
             body;
-            finally;
             loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
           } )
   | TokReturn ->
       let start = t.loc in
       let p, value = if_not_tok TokSemi (fun _ p -> parse_expr p) p in
       let p = eat_tok TokSemi p in
-      (p, Ast.Return { value; loc = Location.union start (cur_loc p) })
+      ( next_idx p,
+        Ast.ReturnStmt
+          {
+            value;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokBreak ->
       let start = t.loc in
-      let p, label =
-        if_tok TokColon (fun _ p -> map_tok TokIdent (fun t _ -> t.str) p) p
-      in
-      let p, value = if_not_tok TokSemi (fun _ p -> parse_expr p) p in
       let p = eat_tok TokSemi p in
-      (p, Ast.Break { label; value; loc = Location.union start (cur_loc p) })
+      ( next_idx p,
+        Ast.BreakStmt
+          { loc = Location.union start (cur_loc p); node_idx = p.next_idx } )
   | TokContinue ->
       let start = t.loc in
-      let p, label =
-        if_tok TokColon (fun _ p -> map_tok TokIdent (fun t _ -> t.str) p) p
-      in
       let p = eat_tok TokSemi p in
-      (p, Ast.Continue { label; loc = Location.union start (cur_loc p) })
+      ( p,
+        Ast.ContinueStmt
+          { loc = Location.union start (cur_loc p); node_idx = p.next_idx } )
   | TokLb ->
       let start = t.loc in
       let rec parse_stmts p =
@@ -404,13 +463,19 @@ and parse_stmt p =
       in
       let p, stmts = parse_stmts p in
       let p = eat_tok TokRb p in
-      (p, Ast.Block { stmts; loc = Location.union start (cur_loc p) })
+      ( next_idx p,
+        Ast.Block
+          {
+            stmts;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokFn ->
       let start = t.loc in
       let p, name = map_tok TokIdent (fun t _ -> t.str) p in
       let p = eat_tok TokLp p in
 
-      let rec parse_args p =
+      let rec parse_args p : parser_state * Ast.argument list =
         let cur, p' = next_tok p in
         match cur.kind with
         | TokRp -> (p, [])
@@ -421,7 +486,10 @@ and parse_stmt p =
             let p = eat_tok TokColon p' in
             let p, typ = parse_type p in
             let p, rest = parse_args p in
-            (p, Ast.FunctionArg { name; typ; loc = start } :: rest)
+            let arg : Ast.argument =
+              { name; arg_type = typ; loc = start; node_idx = p.next_idx }
+            in
+            (next_idx p, arg :: rest)
         | _ ->
             Error.fail_at_spot "Expected an argument" p.src cur.loc
               Error.Unknown
@@ -431,16 +499,30 @@ and parse_stmt p =
       let p, ret_type = parse_type p in
       let p, body = parse_stmt p in
       ( p,
-        Ast.Function
-          { name; args; ret_type; body; loc = Location.union start (cur_loc p) }
-      )
+        Ast.FnDecl
+          {
+            name;
+            args;
+            ret_type;
+            body;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokStruct ->
-      let rec parse_decl_list p =
+      let rec parse_decl_list p : parser_state * Ast.decl list =
         let next, _ = next_tok p in
         match next.kind with
         | TokRb -> (p, [])
-        | TokLet | TokFn | TokStruct ->
+        | TokLet | TokFn | TokCoroutine | TokStruct ->
             let p, decl = parse_stmt p in
+            let decl : Ast.decl =
+              match decl with
+              | LetStmt x -> LetStmt x
+              | FnDecl x -> FnDecl x
+              | StructDecl x -> StructDecl x
+              | CoDecl x -> CoDecl x
+              | _ -> failwith "Unreachable"
+            in
             let p, rest = parse_decl_list p in
             (p, decl :: rest)
         | TokIdent ->
@@ -456,36 +538,70 @@ and parse_stmt p =
       let p, decls = parse_decl_list p in
       let p = eat_tok TokRb p in
 
-      (p, Ast.Struct { loc = Location.union (cur_loc p) start; name; decls })
+      ( next_idx p,
+        Ast.StructDecl
+          {
+            loc = Location.union (cur_loc p) start;
+            name;
+            decls;
+            node_idx = p.next_idx;
+          } )
   | TokType ->
       let p, name = map_tok TokIdent (fun t _ -> t.str) p in
       let p = eat_tok TokAssign p in
       let p, typ = parse_type p in
-      (p, Ast.TypeAlias { loc = t.loc; name; typ })
+      ( next_idx p,
+        Ast.AliasStmt
+          {
+            loc = t.loc;
+            type_name = name;
+            other_type = typ;
+            node_idx = p.next_idx;
+          } )
   | _ ->
       let p, expr = parse_expr p0 in
       let p = eat_tok TokSemi p in
-      (p, expr)
+      (p, Expr expr)
 
-and parse_field_decl p =
+and parse_field_decl p : parser_state * Ast.decl =
   let start = cur_loc p in
   let p, name = map_tok TokIdent (fun t _ -> t.str) p in
   let p = eat_tok TokColon p in
   let p, typ = parse_type p in
   let p, value = if_tok TokAssign (fun _ p -> parse_expr p) p in
   let p = eat_tok TokComa p in
-  (p, Ast.Field { loc = start; name; typ; value })
+  ( next_idx p,
+    Ast.Field
+      {
+        loc = start;
+        var_name = name;
+        field_type = typ;
+        value;
+        node_idx = p.next_idx;
+      } )
 
-and parse_root p =
-  let rec parse_program' p =
+and parse_root p : parser_state * Ast.root =
+  let rec parse_program' p : parser_state * Ast.top_stmt list =
     match peek_tok_kind p with
     | Some TokEnd -> (p, [])
     | Some _ ->
         let p, stmt = parse_stmt p in
+        let stmt : Ast.top_stmt =
+          match stmt with
+          | FnDecl x -> FnDecl x
+          | StructDecl y -> StructDecl y
+          | CoDecl y -> CoDecl y
+          | LetStmt y -> LetStmt y
+          | AliasStmt y -> AliasStmt y
+          | _ ->
+              Error.fail_at_spot p.src "Not a top-level statement"
+                (stmt |> Ast.stmt_to_node |> Ast.node_loc)
+                Error.Unknown
+        in
         let p, rest = parse_program' p in
         (p, stmt :: rest)
     | None -> failwith "Unreachable (in parse_program')"
   in
   let start = cur_loc p in
   let p, stmts = parse_program' p in
-  (p, Ast.Root { stmts; loc = start })
+  (next_idx p, { stmts; loc = start; node_idx = p.next_idx })
