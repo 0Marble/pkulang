@@ -3,7 +3,8 @@ open Pkulang
 
 let run_parser s =
   let toks = s |> Tokenizer.tokenize in
-  Parser.parse_root { toks; src = s } |> snd |> Ast.node_to_str
+  Ast.Root (Parser.parse_root { toks; src = s; next_idx = 0 } |> snd)
+  |> Ast.node_to_str
 
 let range () =
   let src =
@@ -11,7 +12,7 @@ let range () =
     fn range(a: int, b: int) void {
       let i: int = a;
       while(i < b) {
-        yield i;
+        yield(i);
         i += 1;
       }
     }
@@ -24,9 +25,9 @@ let range () =
   check string "range"
     "(root (stmts (fn range (arg a (type int)) (arg b (type int)) (type void) \
      (block (let i (type int) (var a)) (while (bin Lt (var i) (var b)) (block \
-     (yield (var i)) (bin Unimplemented (var i) (num 1))) _))) (fn main (type \
+     (yield (var i)) (bin Unimplemented (var i) (num 1)))))) (fn main (type \
      void) (block (for i (call (var range) (num 0) (num 10)) (call (var \
-     print_int) (var i)) _)))))"
+     print_int) (var i)))))))"
     (run_parser src)
 
 let linked_list () =
@@ -37,7 +38,7 @@ let linked_list () =
     next: LinkedList,
 
     fn iterator() void {
-      yield self.val;
+      yield(self.val);
       if (self.next) self.next.iterator();
     }
   }
@@ -47,9 +48,9 @@ let linked_list () =
     for (i : range(0, 10)) {
       l = new LinkedList{ val: i, next: l };
     } 
-    let it: CoroutineType = coroutine l.iterator;
-    assert(yield(it) == 9);
-    assert(yield(it) == 8);
+    let it: CoroutineType = create(l.iterator);
+    assert(resume(it) == 9);
+    assert(resume(it) == 8);
     for (x : it) {
       print_int(x);
     }
@@ -61,12 +62,12 @@ let linked_list () =
      (type LinkedList) _) (fn iterator (type void) (block (yield (dot (var \
      self) val)) (if (dot (var self) next) (call (dot (dot (var self) next) \
      iterator)) _)))) (fn main (type void) (block (let l (type LinkedList) \
-     (var null)) (for i (call (var range) (num 0) (num 10)) (block (bin Assign \
+     (null)) (for i (call (var range) (num 0) (num 10)) (block (bin Assign \
      (var l) (new (type LinkedList) (fields (field_literal val (var i)) \
-     (field_literal next (var l)))))) _) (let it (type CoroutineType) \
-     (coroutine (dot (var l) iterator))) (call (var assert) (yield (bin Eq \
-     (var it) (num 9)))) (call (var assert) (yield (bin Eq (var it) (num 8)))) \
-     (for x (var it) (block (call (var print_int) (var x))) _)))))"
+     (field_literal next (var l))))))) (let it (type CoroutineType) (create \
+     (dot (var l) iterator))) (call (var assert) (bin Eq (resume (var it) _) \
+     (num 9))) (call (var assert) (bin Eq (resume (var it) _) (num 8))) (for x \
+     (var it) (block (call (var print_int) (var x))))))))"
     (run_parser src)
 
 let tree_iter () =
@@ -79,7 +80,7 @@ let tree_iter () =
     
     fn iterate() void {
       if (self.left) self.left.iterate();
-      yield self.val;
+      yield(self.val);
       if (self.right) self.right.iterate();
     }
   }
@@ -87,8 +88,8 @@ let tree_iter () =
   in
   check string "tree_iter"
     "(root (stmts (struct Tree (field val (type int) _) (field left (type \
-     Tree) (var null)) (field right (type Tree) (var null)) (fn iterate (type \
-     void) (block (if (dot (var self) left) (call (dot (dot (var self) left) \
+     Tree) (null)) (field right (type Tree) (null)) (fn iterate (type void) \
+     (block (if (dot (var self) left) (call (dot (dot (var self) left) \
      iterate)) _) (yield (dot (var self) val)) (if (dot (var self) right) \
      (call (dot (dot (var self) right) iterate)) _))))))"
     (run_parser src)

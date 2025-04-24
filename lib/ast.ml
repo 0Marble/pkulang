@@ -415,6 +415,22 @@ let stmt_to_node (s : stmt) : node =
   | CoDecl y -> CoDecl y
   | AliasStmt y -> AliasStmt y
 
+let decl_to_node (d : decl) : node =
+  match d with
+  | FnDecl y -> FnDecl y
+  | CoDecl y -> CoDecl y
+  | LetStmt y -> LetStmt y
+  | StructDecl y -> StructDecl y
+  | Field y -> Field y
+
+let top_stmt_to_stmt (s : top_stmt) : stmt =
+  match s with
+  | FnDecl x -> FnDecl x
+  | StructDecl y -> StructDecl y
+  | CoDecl y -> CoDecl y
+  | LetStmt y -> LetStmt y
+  | AliasStmt y -> AliasStmt y
+
 let node_loc n =
   match n with
   | Root x -> x.loc
@@ -454,3 +470,156 @@ let node_loc n =
   | ReturnStmt x -> x.loc
   | FieldLiteral x -> x.loc
   | Invalid -> failwith "unreachable"
+
+let rec node_to_str (n : node) : string =
+  match n with
+  | Root x ->
+      Printf.sprintf "(root (stmts%s))"
+        (x.stmts
+        |> List.fold_left
+             (fun acc stmt ->
+               Printf.sprintf "%s %s" acc
+                 (stmt |> top_stmt_to_stmt |> stmt_to_node |> node_to_str))
+             "")
+  | FnDecl x ->
+      let s = Printf.sprintf "(fn %s" x.name in
+      let s =
+        List.fold_left
+          (fun acc s -> Printf.sprintf "%s %s" acc (node_to_str (Argument s)))
+          s x.args
+      in
+      Printf.sprintf "%s %s %s)" s
+        (x.ret_type |> type_to_node |> node_to_str)
+        (x.body |> stmt_to_node |> node_to_str)
+  | StructDecl x ->
+      Printf.sprintf "%s)"
+        (x.decls
+        |> List.fold_left
+             (fun acc n ->
+               Printf.sprintf "%s %s" acc (n |> decl_to_node |> node_to_str))
+             (Printf.sprintf "(struct %s" x.name))
+  | CoDecl _ -> "?"
+  | LetStmt x ->
+      Printf.sprintf "(let %s %s %s)" x.var_name
+        (x.var_type |> type_to_node |> node_to_str)
+        (x.value |> expr_to_node |> node_to_str)
+  | AliasStmt x ->
+      Printf.sprintf "(alias %s %s)" x.type_name
+        (x.other_type |> type_to_node |> node_to_str)
+  | Argument x ->
+      Printf.sprintf "(arg %s %s)" x.name
+        (x.arg_type |> type_to_node |> node_to_str)
+  | NamedType x -> Printf.sprintf "(type %s)" x.name
+  | ArrayType x ->
+      Printf.sprintf "(array %s)" (x.elem |> type_to_node |> node_to_str)
+  | DotType x ->
+      Printf.sprintf "(dot_type %s %s)"
+        (x.parent |> type_to_node |> node_to_str)
+        x.child
+  | FnType _ -> "?"
+  | CoType _ -> "?"
+  | CoObjType _ -> "?"
+  | Block x ->
+      let s = Printf.sprintf "(block" in
+      let s =
+        List.fold_left
+          (fun acc s ->
+            Printf.sprintf "%s %s" acc (s |> stmt_to_node |> node_to_str))
+          s x.stmts
+      in
+      Printf.sprintf "%s)" s
+  | Field x ->
+      Printf.sprintf "(field %s %s %s)" x.var_name
+        (x.field_type |> type_to_node |> node_to_str)
+        (x.value
+        |> Option.map (fun n -> n |> expr_to_node |> node_to_str)
+        |> Option.value ~default:"_")
+  | BinExpr x ->
+      Printf.sprintf "(bin %s %s %s)"
+        (Tokenizer.tok_to_str x.op)
+        (x.lhs |> expr_to_node |> node_to_str)
+        (x.rhs |> expr_to_node |> node_to_str)
+  | UnaryExpr x ->
+      Printf.sprintf "(unary %s %s)"
+        (Tokenizer.tok_to_str x.op)
+        (x.sub_expr |> expr_to_node |> node_to_str)
+  | CallExpr x ->
+      List.fold_left
+        (fun s n -> Printf.sprintf "%s %s" s (n |> expr_to_node |> node_to_str))
+        (Printf.sprintf "(call %s" (x.fn |> expr_to_node |> node_to_str))
+        x.params
+      |> Printf.sprintf "%s)"
+  | IndexExpr x ->
+      List.fold_left
+        (fun s n -> Printf.sprintf "%s %s" s (n |> expr_to_node |> node_to_str))
+        (Printf.sprintf "(idx %s" (x.arr |> expr_to_node |> node_to_str))
+        x.idx
+      |> Printf.sprintf "%s)"
+  | DotExpr x ->
+      Printf.sprintf "(dot %s %s)"
+        (x.obj |> expr_to_node |> node_to_str)
+        x.field
+  | VarExpr x -> Printf.sprintf "(var %s)" x.name
+  | NumExpr x -> Printf.sprintf "(num %d)" x.num
+  | StringExpr x -> Printf.sprintf "(str \"%s\")" x.str
+  | ArrayLiteral x ->
+      let s = Printf.sprintf "(array_literal" in
+      let s =
+        List.fold_left
+          (fun acc s ->
+            Printf.sprintf "%s %s" acc (s |> expr_to_node |> node_to_str))
+          s x.elems
+      in
+      Printf.sprintf "%s)" s
+  | NullLiteral _ -> "(null)"
+  | NewExpr x ->
+      let s =
+        Printf.sprintf "(new %s (fields" (x.typ |> type_to_node |> node_to_str)
+      in
+      let s =
+        List.fold_left
+          (fun acc s ->
+            Printf.sprintf "%s %s" acc (FieldLiteral s |> node_to_str))
+          s x.fields
+      in
+      Printf.sprintf "%s))" s
+  | YieldExpr x ->
+      Printf.sprintf "(yield %s)"
+        (x.value |> Option.map expr_to_node |> Option.map node_to_str
+       |> Option.value ~default:"_")
+  | CreateExpr x ->
+      List.fold_left
+        (fun acc y -> acc ^ " " ^ (y |> expr_to_node |> node_to_str))
+        (Printf.sprintf "(create %s"
+           (x.coroutine |> expr_to_node |> node_to_str))
+        x.params
+      ^ ")"
+  | ResumeExpr x ->
+      Printf.sprintf "(resume %s %s)"
+        (x.coroutine |> expr_to_node |> node_to_str)
+        (x.value |> Option.map expr_to_node |> Option.map node_to_str
+       |> Option.value ~default:"_")
+  | ForLoop x ->
+      Printf.sprintf "(for %s %s %s)" x.iter_var
+        (x.iterator |> expr_to_node |> node_to_str)
+        (x.body |> stmt_to_node |> node_to_str)
+  | WhileLoop x ->
+      Printf.sprintf "(while %s %s)"
+        (x.condition |> expr_to_node |> node_to_str)
+        (x.body |> stmt_to_node |> node_to_str)
+  | ContinueStmt _ -> Printf.sprintf "(continue)"
+  | BreakStmt _ -> Printf.sprintf "(break)"
+  | IfStmt x ->
+      Printf.sprintf "(if %s %s %s)"
+        (x.condition |> expr_to_node |> node_to_str)
+        (x.if_true |> stmt_to_node |> node_to_str)
+        (x.if_false |> Option.map stmt_to_node |> Option.map node_to_str
+       |> Option.value ~default:"_")
+  | ReturnStmt x ->
+      Printf.sprintf "(return %s)"
+        (x.value |> Option.map expr_to_node |> Option.map node_to_str
+       |> Option.value ~default:"_")
+  | FieldLiteral x ->
+      Printf.sprintf "(field_literal %s %s)" x.name
+        (x.value |> expr_to_node |> node_to_str)
+  | Invalid -> "?"

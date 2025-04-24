@@ -3,7 +3,8 @@ open Pkulang
 
 let run_parser s =
   let toks = s |> Tokenizer.tokenize in
-  Parser.parse_expr { toks; src = s } |> snd |> Ast.node_to_str
+  Parser.parse_expr { toks; src = s; next_idx = 0 }
+  |> snd |> Ast.expr_to_node |> Ast.node_to_str
 
 let simple_terms () =
   check string "one number" "(num 10)" (run_parser "10;");
@@ -72,10 +73,11 @@ let struct_literal () =
     (run_parser "new Foo{x:10,y:20}")
 
 let coroutines () =
-  check string "yield" "(yield (var a))" (run_parser "yield a");
+  check string "yield" "(yield (var a))" (run_parser "yield(a)");
   check string "yield nothing" "(yield _)" (run_parser "yield;");
-  check string "create coroutine" "(coroutine (var f))"
-    (run_parser "coroutine f");
+  check string "create coroutine" "(create (var f))" (run_parser "create(f)");
+  check string "create coroutine with args" "(create (var f) (var a) (var b))"
+    (run_parser "create(f, a, b)");
   check string "resume with arg" "(resume (var f) (var a))"
     (run_parser "resume(f, a)");
   check string "resume with no arg" "(resume (var f) _)"
