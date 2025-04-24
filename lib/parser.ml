@@ -208,7 +208,15 @@ and parse_term p : parser_state * Ast.expr =
               node_idx = p.next_idx;
             } )
     | TokYield ->
-        let p, value = if_not_tok TokSemi (fun _ p -> parse_expr p) p in
+        let p, value =
+          if_not_tok TokSemi
+            (fun _ p ->
+              let p = eat_tok TokLp p in
+              let p, v = parse_expr p in
+              let p = eat_tok TokRp p in
+              (p, v))
+            p
+        in
         (next_idx p, Ast.YieldExpr { value; loc = t.loc; node_idx = p.next_idx })
     | TokResume ->
         let p = eat_tok TokLp p in
@@ -219,10 +227,17 @@ and parse_term p : parser_state * Ast.expr =
           Ast.ResumeExpr
             { coroutine; value; loc = t.loc; node_idx = p.next_idx } )
     | TokCreate ->
-        let p, coroutine = parse_expr p in
+        let p, exprs, _ = parse_expr_list p in
+        let coroutine, params =
+          match exprs with
+          | a :: b -> (a, b)
+          | _ ->
+              Error.fail_at_spot p.src "Expected a coroutine" t.loc
+                Error.Unknown
+        in
         ( next_idx p,
           Ast.CreateExpr
-            { coroutine; params = []; loc = t.loc; node_idx = p.next_idx } )
+            { coroutine; params; loc = t.loc; node_idx = p.next_idx } )
     | TokNew ->
         let p, typ = parse_type p in
         let p = eat_tok TokLb p in
@@ -624,6 +639,7 @@ and parse_stmt p : parser_state * Ast.stmt =
       let p, name = map_tok TokIdent (fun t _ -> t.str) p in
       let p = eat_tok TokAssign p in
       let p, typ = parse_type p in
+      let p = eat_tok TokSemi p in
       ( next_idx p,
         Ast.AliasStmt
           {
