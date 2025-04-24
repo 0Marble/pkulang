@@ -3,6 +3,7 @@ type token_kind =
   | TokIdent
   | TokString
   (* Expressions *)
+  | TokNull
   | TokAdd
   | TokSub
   | TokMul
@@ -22,7 +23,7 @@ type token_kind =
   | TokAmp
   | TokYield
   | TokResume
-  | TokCoroutine
+  | TokCreate
   | TokNew
   (* Brackets *)
   | TokLp
@@ -48,6 +49,7 @@ type token_kind =
   (* Declarations *)
   | TokPub
   | TokFn
+  | TokCo
   | TokStruct
   | TokType
   (* special token placed at the end of the token list *)
@@ -57,6 +59,7 @@ type token = { str : string; loc : Location.location; kind : token_kind }
 
 let token_map = Trie.init ();;
 
+Trie.add_word token_map "null" TokNull;;
 Trie.add_word token_map "return" TokReturn;;
 Trie.add_word token_map "break" TokBreak;;
 Trie.add_word token_map "continue" TokContinue;;
@@ -66,12 +69,13 @@ Trie.add_word token_map "else" TokElse;;
 Trie.add_word token_map "while" TokWhile;;
 Trie.add_word token_map "for" TokFor;;
 Trie.add_word token_map "fn" TokFn;;
+Trie.add_word token_map "co" TokCo;;
 Trie.add_word token_map "pub" TokPub;;
 Trie.add_word token_map "struct" TokStruct;;
 Trie.add_word token_map "type" TokType;;
 Trie.add_word token_map "yield" TokYield;;
 Trie.add_word token_map "resume" TokResume;;
-Trie.add_word token_map "coroutine" TokCoroutine;;
+Trie.add_word token_map "create" TokCreate;;
 Trie.add_word token_map "new" TokNew;;
 Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;

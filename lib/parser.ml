@@ -168,6 +168,8 @@ and parse_term p : parser_state * Ast.expr =
   let t, p = next_tok p in
   let p, (leaf : Ast.expr) =
     match t.kind with
+    | TokNull ->
+        (next_idx p, Ast.NullLiteral { loc = t.loc; node_idx = p.next_idx })
     | TokIdent ->
         ( next_idx p,
           Ast.VarExpr { name = t.str; loc = t.loc; node_idx = p.next_idx } )
@@ -216,7 +218,7 @@ and parse_term p : parser_state * Ast.expr =
         ( next_idx p,
           Ast.ResumeExpr
             { coroutine; value; loc = t.loc; node_idx = p.next_idx } )
-    | TokCoroutine ->
+    | TokCreate ->
         let p, coroutine = parse_expr p in
         ( next_idx p,
           Ast.CreateExpr
@@ -297,9 +299,54 @@ and parse_term p : parser_state * Ast.expr =
   parse_postfix p leaf
 
 and parse_type p : parser_state * Ast.typ =
+  let rec parse_type_list p stage : parser_state * Ast.typ list =
+    let next, _ = next_tok p in
+    match (next.kind, stage) with
+    | TokRp, 0 -> (p, [])
+    | TokComa, 0 -> parse_type_list p 1
+    | _, 1 ->
+        let p, t = parse_type p in
+        let p, rest = parse_type_list p 0 in
+        (p, t :: rest)
+    | _ -> Error.fail_at_spot p.src "Expected a coma" next.loc Error.Unknown
+  in
   let parse_type_prefix p : parser_state * Ast.typ =
     let cur, p = next_tok p in
     match cur.kind with
+    | TokFn ->
+        let loc = cur.loc in
+        let p = eat_tok TokLp p in
+        let p, args = parse_type_list p 1 in
+        let p = eat_tok TokRp p in
+        let p, ret = parse_type p in
+        (next_idx p, Ast.FnType { args; ret; loc; node_idx = p.next_idx })
+    | TokCo ->
+        let loc = cur.loc in
+        let p, args =
+          if_tok TokLp
+            (fun _ p ->
+              let p, args = parse_type_list p 1 in
+              let p = eat_tok TokRp p in
+              (p, args))
+            p
+        in
+        let p, param =
+          if_tok TokColon
+            (fun _ p ->
+              let p = eat_tok TokLp p in
+              let p, param = parse_type p in
+              let p = eat_tok TokRp p in
+              (p, param))
+            p
+        in
+        let p, yield = parse_type p in
+        let (node : Ast.typ) =
+          match args with
+          | None -> Ast.CoObjType { param; yield; loc; node_idx = p.next_idx }
+          | Some args ->
+              Ast.CoType { args; yield; param; loc; node_idx = p.next_idx }
+        in
+        (next_idx p, node)
     | TokLs ->
         let start = cur.loc in
         let p, elem = parse_type p in
@@ -334,6 +381,23 @@ and parse_type p : parser_state * Ast.typ =
   in
   let p, leaf = parse_type_prefix p in
   parse_type_suffix p leaf
+
+and parse_args p : parser_state * Ast.argument list =
+  let cur, p' = next_tok p in
+  match cur.kind with
+  | TokRp -> (p, [])
+  | TokComa -> parse_args p'
+  | TokIdent ->
+      let start = cur.loc in
+      let name = cur.str in
+      let p = eat_tok TokColon p' in
+      let p, typ = parse_type p in
+      let p, rest = parse_args p in
+      let arg : Ast.argument =
+        { name; arg_type = typ; loc = start; node_idx = p.next_idx }
+      in
+      (next_idx p, arg :: rest)
+  | _ -> Error.fail_at_spot "Expected an argument" p.src cur.loc Error.Unknown
 
 and parse_stmt p : parser_state * Ast.stmt =
   let p0 = p in
@@ -470,30 +534,40 @@ and parse_stmt p : parser_state * Ast.stmt =
             loc = Location.union start (cur_loc p);
             node_idx = p.next_idx;
           } )
+  | TokCo ->
+      let start = t.loc in
+      let p, name = map_tok TokIdent (fun t _ -> t.str) p in
+      let p = eat_tok TokLp p in
+
+      let p, args = parse_args p in
+      let p = eat_tok TokRp p in
+      let p, param_type =
+        if_tok TokColon
+          (fun _ p ->
+            let p = eat_tok TokLp p in
+            let p, param = parse_type p in
+            let p = eat_tok TokRp p in
+            (p, param))
+          p
+      in
+      let p, yield_type = parse_type p in
+      let p, body = parse_stmt p in
+      ( p,
+        Ast.CoDecl
+          {
+            name;
+            args;
+            yield_type;
+            param_type;
+            body;
+            loc = Location.union start (cur_loc p);
+            node_idx = p.next_idx;
+          } )
   | TokFn ->
       let start = t.loc in
       let p, name = map_tok TokIdent (fun t _ -> t.str) p in
       let p = eat_tok TokLp p in
 
-      let rec parse_args p : parser_state * Ast.argument list =
-        let cur, p' = next_tok p in
-        match cur.kind with
-        | TokRp -> (p, [])
-        | TokComa -> parse_args p'
-        | TokIdent ->
-            let start = cur.loc in
-            let name = cur.str in
-            let p = eat_tok TokColon p' in
-            let p, typ = parse_type p in
-            let p, rest = parse_args p in
-            let arg : Ast.argument =
-              { name; arg_type = typ; loc = start; node_idx = p.next_idx }
-            in
-            (next_idx p, arg :: rest)
-        | _ ->
-            Error.fail_at_spot "Expected an argument" p.src cur.loc
-              Error.Unknown
-      in
       let p, args = parse_args p in
       let p = eat_tok TokRp p in
       let p, ret_type = parse_type p in
@@ -513,7 +587,7 @@ and parse_stmt p : parser_state * Ast.stmt =
         let next, _ = next_tok p in
         match next.kind with
         | TokRb -> (p, [])
-        | TokLet | TokFn | TokCoroutine | TokStruct ->
+        | TokLet | TokFn | TokCo | TokStruct ->
             let p, decl = parse_stmt p in
             let decl : Ast.decl =
               match decl with

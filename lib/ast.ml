@@ -27,7 +27,8 @@ and co_decl = {
   name : string;
   args : argument list;
   yield_type : typ;
-  body : block;
+  param_type : typ option;
+  body : stmt;
   node_idx : int;
   loc : Location.location;
 }
@@ -60,6 +61,7 @@ and typ =
   | DotType of dot_type
   | FnType of fn_type
   | CoType of co_type
+  | CoObjType of co_obj_type
 
 and block = { stmts : stmt list; node_idx : int; loc : Location.location }
 
@@ -115,6 +117,14 @@ and fn_type = {
 and co_type = {
   args : typ list;
   yield : typ;
+  param : typ option;
+  node_idx : int;
+  loc : Location.location;
+}
+
+and co_obj_type = {
+  yield : typ;
+  param : typ option;
   node_idx : int;
   loc : Location.location;
 }
@@ -261,6 +271,7 @@ and node =
   | DotType of dot_type
   | FnType of fn_type
   | CoType of co_type
+  | CoObjType of co_obj_type
   | Block of block
   | Field of field
   | BinExpr of bin_expr
@@ -284,6 +295,7 @@ and node =
   | IfStmt of if_stmt
   | ReturnStmt of return_stmt
   | FieldLiteral of field_literal
+  | Invalid
 
 let type_to_node (t : typ) : node =
   match t with
@@ -292,6 +304,7 @@ let type_to_node (t : typ) : node =
   | DotType x -> DotType x
   | FnType x -> FnType x
   | CoType x -> CoType x
+  | CoObjType x -> CoObjType x
 
 let expr_to_node (e : expr) : node =
   match e with
@@ -341,6 +354,7 @@ let node_loc n =
   | DotType x -> x.loc
   | FnType x -> x.loc
   | CoType x -> x.loc
+  | CoObjType x -> x.loc
   | Block x -> x.loc
   | Field x -> x.loc
   | BinExpr x -> x.loc
@@ -364,3 +378,4 @@ let node_loc n =
   | IfStmt x -> x.loc
   | ReturnStmt x -> x.loc
   | FieldLiteral x -> x.loc
+  | Invalid -> failwith "unreachable"
