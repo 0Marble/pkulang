@@ -28,8 +28,7 @@ let ptr_valid h ptr =
   match ptr with
   | Value.Number _ -> raise (NotAPointer ptr)
   | Value.Pointer ptr -> (
-      if not (ptr.idx >= 1024 && ptr.idx < h.max_address) then
-        raise (InvalidPtr ptr)
+      if ptr.idx < 1024 || ptr.idx > h.max_address then raise (InvalidPtr ptr)
       else
         match h.memory.(ptr.idx) with
         | FreeList _ -> raise (UseAfterFree ptr)

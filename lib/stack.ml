@@ -17,7 +17,7 @@ type frame = {
 and stack = {
   top : frame;
   bot : frame;
-  yielder : frame option;
+  yielder : (stack * int) option;
   ptr : Value.value;
 }
 
@@ -99,11 +99,14 @@ let call s dest args fn =
 
 let ret (s : stack) v =
   let callee = s.top in
-  let (caller : frame) =
-    match callee.caller with Some c -> c | None -> raise StackUnderflow
-  in
-  let s = { s with top = caller } in
-  store s caller.result v;
-  s
+  match callee.caller with
+  | Some caller ->
+      let s = { s with top = caller } in
+      store s caller.result v;
+      s
+  | None -> (
+      match s.yielder with
+      | Some (y, ip) -> { y with top = { y.top with ip } }
+      | None -> raise StackUnderflow)
 
 let goto s ip = { s with top = { s.top with ip } }

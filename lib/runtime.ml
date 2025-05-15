@@ -18,8 +18,9 @@ type command_kind =
   | Call of (Stack.location * operand array * jump_target)
   | Ret of operand
   | Create of (Stack.location * operand array * jump_target)
-  | Resume of (Stack.location * operand * operand)
-  | Yield of (Stack.location * operand)
+    (* val=resume(crt) or goto tgt *)
+  | Resume of (Stack.location * operand * jump_target)
+  | Yield of operand
   | Alloca of int
   | New of Stack.location
   | Free of operand
@@ -134,12 +135,10 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
              "[" args
           ^ "]")
           (string_of_tgt fn)
-    | Resume (dest, arg, co) ->
+    | Resume (dest, arg, tgt) ->
         Printf.sprintf "Resume %s %s %s" (string_of_dest dest)
-          (string_of_operand arg) (string_of_operand co)
-    | Yield (dest, op) ->
-        Printf.sprintf "Yield %s %s" (string_of_dest dest)
-          (string_of_operand op)
+          (string_of_operand arg) (string_of_tgt tgt)
+    | Yield op -> Printf.sprintf "Yield %s" (string_of_operand op)
     | Alloca amt -> "Alloca " ^ string_of_int amt
     | New dst -> "New " ^ string_of_dest dst
     | Free op -> "Free " ^ string_of_operand op
@@ -442,7 +441,47 @@ let step r =
         let v = Heap.field_get r.heap obj fname in
         Stack.store r.stack dest v;
         next r
-    | _ -> failwith "Todo"
+    | Create (dest, args, fn) ->
+        let args = Array.map (fun x -> op_to_val r x) args in
+        let fn = get_ip r fn in
+        let rec (frame : Stack.frame) =
+          {
+            start = fn;
+            args;
+            locals = [||];
+            caller = None;
+            result = Void;
+            stack;
+            ip = fn;
+          }
+        and stack =
+          { top = frame; bot = frame; yielder = None; ptr = Value.null }
+        in
+        let h, ptr = Heap.alloc r.heap in
+        Stack.store r.stack dest ptr;
+        Heap.store_coroutine r.heap ptr stack;
+        let r = { r with heap = h } in
+        next r
+    | Yield v ->
+        let v = op_to_val r v in
+        let coroutine = Stack.inc_ip r.stack in
+        let yielder =
+          match coroutine.yielder with
+          | Some (y, _) -> y
+          | None -> failwith "Not a coroutine!"
+        in
+        Stack.store yielder yielder.top.result v;
+        Heap.store_coroutine r.heap coroutine.ptr coroutine;
+        { r with stack = yielder }
+    | Resume (dest, crt, if_end) ->
+        let yielder = Stack.inc_ip r.stack in
+        let if_end = get_ip r if_end in
+        let (yielder : Stack.stack) =
+          { yielder with top = { yielder.top with result = dest } }
+        in
+        let h, coroutine = Heap.get_coroutine r.heap (op_to_val r crt) in
+        let coroutine = { coroutine with yielder = Some (yielder, if_end) } in
+        { r with stack = coroutine; heap = h }
   with e ->
     trace r;
     raise e
