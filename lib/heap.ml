@@ -7,7 +7,7 @@ type obj =
   | HeapNumber of int
   | HeapArray of Value.value array
   | HeapObject of { fields : Value.value StringMap.t; order : string list }
-  | Coroutine of Stack.frame
+  | Coroutine of Stack.stack
 
 type heap = {
   memory : obj array;
@@ -202,7 +202,7 @@ let rec string_of_obj ?(include_ptr = false) h ptr =
                 ("{", 0) obj.order
             in
             s ^ "}"
-        | Coroutine f -> "crt-" ^ string_of_int f.start
+        | Coroutine f -> "crt-" ^ string_of_int f.bot.start
       in
       if include_ptr then Printf.sprintf "(*%d)%s" ptr.idx s else s
 

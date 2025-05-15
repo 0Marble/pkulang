@@ -40,7 +40,7 @@ type command_kind =
 type command = { cmd : command_kind; loc : Location.location }
 
 and runtime = {
-  stack : Stack.frame;
+  stack : Stack.stack;
   heap : Heap.heap;
   code : command array;
   stdin : string;
@@ -56,14 +56,20 @@ let string_of_operand_dyn r (f : Stack.frame) op =
   match op with
   | Number x -> string_of_int x
   | Location x ->
-      let v = Stack.load f x in
+      let v =
+        match x with
+        | Register i -> f.locals.(i)
+        | Argument i -> f.args.(i)
+        | Void -> raise Stack.WriteToVoid
+      in
       let loc = Stack.string_of_location x in
       let obj = Heap.string_of_obj ~include_ptr:true r.heap v in
       Printf.sprintf "%s->%s" loc obj
   | Null -> "Null"
   | Ip -> "Ip"
 
-let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
+let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
+    idx c =
   let sov =
     match ctx with
     | None -> fun s _ -> s
@@ -175,21 +181,25 @@ let string_of_cmd ?(ctx = None) ?(mark = false) idx c =
   else Printf.sprintf "[>%4d] %s" idx s
 
 let create source code main =
+  let rec (frame : Stack.frame) =
+    {
+      start = main;
+      args = [||];
+      locals = [||];
+      caller = None;
+      result = Stack.Void;
+      ip = main;
+      stack;
+    }
+  and (stack : Stack.stack) =
+    { top = frame; bot = frame; yielder = None; ptr = Value.null }
+  in
   {
     heap = Heap.create ();
     gc_on = true;
     stdout = "";
     stdin = "";
-    stack =
-      {
-        ptr = Value.null;
-        start = main;
-        caller = None;
-        ip = main;
-        args = [||];
-        locals = [||];
-        result = Stack.Void;
-      };
+    stack;
     code;
     source;
     last_instrs = Queue.create ();
@@ -219,7 +229,7 @@ let trace ?(flags = 15) r =
         (string_of_cmd ~ctx:(Some (r, f)) f.ip r.code.(f.ip).cmd)
         acc
     in
-    prerr_string @@ stack_trace r r.stack)
+    prerr_string @@ stack_trace r r.stack.top)
   else ();
 
   if Int.logand flags 4 <> 0 then (
@@ -249,10 +259,10 @@ let trace ?(flags = 15) r =
             (v, ip :: l)
       with Invalid_argument _ -> (visited, [])
     in
-    let _, cmds = function_code r r.stack.start IntSet.empty in
+    let _, cmds = function_code r r.stack.top.start IntSet.empty in
     List.iter (fun ip ->
         prerr_endline
-        @@ string_of_cmd ~mark:(ip = r.stack.ip) ip r.code.(ip).cmd)
+        @@ string_of_cmd ~mark:(ip = r.stack.top.ip) ip r.code.(ip).cmd)
     @@ cmds)
   else ();
 
@@ -260,39 +270,30 @@ let trace ?(flags = 15) r =
     prerr_string "====== Section 4: Current Registers =======\n";
     Array.iteri
       (fun i _ ->
-        prerr_endline @@ string_of_operand_dyn r r.stack (Location (Argument i)))
-      r.stack.args;
+        prerr_endline
+        @@ string_of_operand_dyn r r.stack.top (Location (Argument i)))
+      r.stack.top.args;
     Array.iteri
       (fun i _ ->
-        prerr_endline @@ string_of_operand_dyn r r.stack (Location (Register i)))
-      r.stack.locals)
+        prerr_endline
+        @@ string_of_operand_dyn r r.stack.top (Location (Register i)))
+      r.stack.top.locals)
   else ();
 
   prerr_endline "=================TRACE END=================\n"
 
 let finished r =
-  let isp = r.stack.ip in
+  let isp = r.stack.top.ip in
   let cmd = r.code.(isp) in
   if cmd.cmd = Halt then true else false
 
 let step r =
   try
-    let get_active r () =
-      let rec get_active' r (stack : Stack.frame) =
-        let active = Stack.get_active stack in
-        let next =
-          match stack.caller with
-          | Some stack -> get_active' r stack
-          | None -> []
-        in
-        List.append active next
-      in
-      get_active' r r.stack
-    in
-    let next r = { r with stack = { r.stack with ip = r.stack.ip + 1 } } in
+    let get_active r () = Stack.get_active r.stack in
+    let next r = { r with stack = Stack.inc_ip r.stack } in
     let op_to_val r op =
       match op with
-      | Ip -> Value.Number r.stack.ip
+      | Ip -> Value.Number r.stack.top.ip
       | Null -> Value.null
       | Number x -> Value.Number x
       | Location x -> Stack.load r.stack x
@@ -310,20 +311,20 @@ let step r =
           match Stack.load r.stack x with
           | Value.Number y -> y
           | _ -> failwith "Todo")
-      | Relative x -> r.stack.ip + x
+      | Relative x -> r.stack.top.ip + x
     in
 
     let r =
       if r.gc_on then { r with heap = Heap.maybe_gc r.heap (get_active r) }
       else r
     in
-    let cmd = r.code.(r.stack.ip) in
+    let cmd = r.code.(r.stack.top.ip) in
 
     if Queue.length r.last_instrs >= r.keep_instrs then
       let _ = Queue.pop r.last_instrs in
       ()
     else ();
-    Queue.push r.stack.ip r.last_instrs;
+    Queue.push r.stack.top.ip r.last_instrs;
 
     match cmd.cmd with
     | Halt -> r
@@ -332,17 +333,7 @@ let step r =
     | Trace x ->
         trace ~flags:x r;
         next r
-    | Alloca amt ->
-        next
-          {
-            r with
-            stack =
-              {
-                r.stack with
-                locals =
-                  Array.append r.stack.locals (Array.make amt (Value.Number 0));
-              };
-          }
+    | Alloca amt -> next { r with stack = Stack.alloca r.stack amt }
     | Add (dest, lhs, rhs) ->
         Stack.store r.stack dest
           (Value.Number
@@ -357,63 +348,12 @@ let step r =
         Stack.store r.stack dest (op_to_val r src);
         next r
     | Call (dest, args, fn) ->
-        let caller = { r.stack with result = dest } in
-        let (callee : Stack.frame) =
-          {
-            ptr = Value.null;
-            start = get_ip r fn;
-            locals = [||];
-            args = Array.map (fun x -> op_to_val r x) args;
-            caller = Some caller;
-            result = Void;
-            ip = get_ip r fn;
-          }
-        in
-        { r with stack = callee }
+        let args = Array.map (fun x -> op_to_val r x) args in
+        let fn = get_ip r fn in
+        { r with stack = Stack.call r.stack dest args fn }
     | Ret v ->
-        let callee = r.stack in
-        let caller =
-          match callee.caller with
-          | Some f -> f
-          | None ->
-              Error.fail_at_spot r.source "Stack underflow" cmd.loc Error.Eval
-        in
-        Stack.store caller caller.result (op_to_val r v);
-        next { r with stack = caller }
-    | Create (dest, args, fn) ->
-        let h, ptr = Heap.alloc r.heap in
-        let (co : Stack.frame) =
-          {
-            ptr;
-            start = get_ip r fn;
-            locals = [||];
-            args = Array.map (fun x -> op_to_val r x) args;
-            caller = None;
-            result = Void;
-            ip = get_ip r fn;
-          }
-        in
-        Heap.store_coroutine h ptr co;
-        Stack.store r.stack dest ptr;
-        next { r with heap = h }
-    | Resume (dest, arg, co) ->
-        let ptr = op_to_val r co in
-        let h, co = Heap.get_coroutine r.heap ptr in
-        let caller = { r.stack with result = dest } in
-        let callee = { co with caller = Some caller } in
-        Stack.store callee callee.result @@ op_to_val r arg;
-        { r with heap = h; stack = callee }
-    | Yield (dest, op) ->
-        let v = op_to_val r op in
-        let callee = { r.stack with result = dest; ip = r.stack.ip + 1 } in
-        let caller =
-          match callee.caller with
-          | Some caller -> caller
-          | None -> failwith "Stack underflow"
-        in
-        Stack.store caller caller.result v;
-        Heap.store_coroutine r.heap callee.ptr callee;
-        next { r with stack = caller }
+        let v = op_to_val r v in
+        next { r with stack = Stack.ret r.stack v }
     | Builtin (args, "print") ->
         let s, _ =
           Array.fold_left
@@ -426,18 +366,23 @@ let step r =
         print_endline s;
         next { r with stdout = r.stdout ^ s ^ "\n" }
     | Builtin (_, _) -> failwith "Unknown builtin"
-    | Goto tgt -> { r with stack = { r.stack with ip = get_ip r tgt } }
+    | Goto tgt ->
+        let ip = get_ip r tgt in
+        { r with stack = Stack.goto r.stack ip }
     | GotoIfZero (v, addr) ->
         if op_to_val r v |> val_to_int = 0 then
-          { r with stack = { r.stack with ip = get_ip r addr } }
+          let ip = get_ip r addr in
+          { r with stack = Stack.goto r.stack ip }
         else next r
     | GotoIfNeg (v, addr) ->
         if op_to_val r v |> val_to_int < 0 then
-          { r with stack = { r.stack with ip = get_ip r addr } }
+          let ip = get_ip r addr in
+          { r with stack = Stack.goto r.stack ip }
         else next r
     | GotoIfNull (v, addr) ->
         if (op_to_val r v |> val_to_ptr).idx = 0 then
-          { r with stack = { r.stack with ip = get_ip r addr } }
+          let ip = get_ip r addr in
+          { r with stack = Stack.goto r.stack ip }
         else next r
     | New dest ->
         let h, ptr = Heap.alloc r.heap in
@@ -497,6 +442,7 @@ let step r =
         let v = Heap.field_get r.heap obj fname in
         Stack.store r.stack dest v;
         next r
+    | _ -> failwith "Todo"
   with e ->
     trace r;
     raise e
