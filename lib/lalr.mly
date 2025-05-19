@@ -248,6 +248,9 @@ if_resume_stmt_with_var:
 if_resume_stmt_void:
     | start=TokIf; TokResume; TokLp; coroutine=expr; TokRp; if_ok=body_stmt; {{ var=None; coroutine; if_ok; if_bad=None; node_idx = next_idx (); loc = snd start;}}
 
+yield_stmt:
+    | start=TokYield; value=option(expr); TokSemi; {({value; node_idx = next_idx (); loc = snd start;}:yield_stmt)}
+
 return_stmt:
     | start=TokReturn; value = option(expr); TokSemi; {{value; node_idx = next_idx (); loc = snd start;}}
 
@@ -349,9 +352,6 @@ new_expr:
 
 field_literal:
     | name=TokIdent; TokColon; value=expr; {({name=fst name; value; node_idx = next_idx (); loc = snd name;}:field_literal)}
-
-yield_stmt:
-    | start=TokYield; value=option(expr); TokSemi; {({value; node_idx = next_idx (); loc = snd start;}:yield_stmt)}
 
 resume_expr:
     | start=TokResume; TokLp; coroutine=expr; TokRp; {({coroutine; node_idx=next_idx (); loc = snd start; }:resume_expr)}
