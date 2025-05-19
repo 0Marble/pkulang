@@ -1,80 +1,3 @@
-(*
-   ROOT -> TOP_STMT ROOT | .
-   TOP_STMT -> FN_DECL | STRUCT_DECL | CO_DECL | LET_STMT | ALIAS_STMT.
-   FN_DECL -> fn ident ARGLIST TYPE STMT.
-   ARGLIST -> lp ARGLIST1.
-   ARGLIST1 -> ARGUMENT coma ARGLIST1 | rp.
-   ARGUMENT -> ident colon TYPE.
-   STRUCT_DECL -> struct ident lb DECLLIST rb.
-   DECLLIST -> DECL DECLLIST | .
-   DECL -> LET_STMT | FN_DECL | STRUCT_DECL | CO_DECL.
-   CO_DECL -> CO_DECL_NO_PARAM | CO_DECL_WITH_PARAM.
-   CO_DECL_NO_PARAM -> co ident ARGLIST TYPE STMT.
-   CO_DECL_WITH_PARAM -> co ident ARGLIST colon lp TYPE rp TYPE STMT.
-   LET_STMT -> let ident colon TYPE assign EXPR semi.
-   ALIAS_STMT -> type ident assign TYPE semi.
-   TYPE -> NAMED_TYPE | ARRAY_TYPE | FN_TYPE | CO_TYPE | CO_OBJ_TYPE | DOT_TYPE.
-   PARENT_TYPE -> NAMED_TYPE | ARRAY_TYPE | DOT_TYPE.
-   NAMED_TYPE -> ident.
-   ARRAY_TYPE -> ls TYPE rs.
-   FN_TYPE -> fn TYPE_LIST TYPE.
-   TYPE_LIST -> lp TYPE_LIST1.
-   TYPE_LIST1 -> TYPE coma TYPE_LIST1 | rp.
-   CO_TYPE -> CO_TYPE_NO_PARAM | CO_TYPE_WITH_PARAM.
-   CO_TYPE_NO_PARAM -> co TYPE_LIST TYPE.
-   CO_TYPE_WITH_PARAM -> co TYPE_LIST colon lp TYPE rp TYPE.
-   CO_OBJ_TYPE -> CO_OBJ_NO_PARAM | CO_OBJ_WITH_PARAM.
-   CO_OBJ_NO_PARAM -> co TYPE.
-   CO_OBJ_WITH_PARAM -> co colon lp TYPE rp TYPE.
-   DOT_TYPE -> PARENT_TYPE dot ident.
-   STMT -> FOR_LOOP | WHILE_LOOP | IF_STMT | RESUME_STMT | FN_DECL | STRUCT_DECL | CO_DECL | BODY_STMT.
-   BODY_STMT -> BLOCK | LET_STMT | CONTINUE_STMT | BREAK_STMT | RETURN_STMT | EXPR_STMT | ALIAS_STMT.
-   BLOCK -> lb STMT_LIST rb.
-   STMT_LIST -> STMT STMT_LIST | .
-   FOR_LOOP -> for lp ident colon EXPR rp BODY_STMT.
-   WHILE_LOOP -> while lp EXPR rp BODY_STMT.
-   CONTINUE_STMT -> continue semi.
-   BREAK_STMT -> break semi.
-   IF_STMT -> IF_STMT_BASE | IF_STMT else BODY_STMT.
-   IF_STMT_BASE -> if lp EXPR rp BODY_STMT.
-   RESUME_STMT -> RESUME_STMT_BASE | RESUME_STMT else BODY_STMT.
-   RESUME_STMT_BASE -> RESUME_VOID_STMT | RESUME_VAR_STMT.
-   RESUME_VOID_STMT -> if resume lp EXPR rp BODY_STMT.
-   RESUME_VAR_STMT -> if resume lp ident colon EXRP rp BODY_STMT.
-   RETURN_STMT -> RETURN_VALUE | RETURN_VOID.
-   RETURN_VOID -> return semi.
-   RETURN_VALUE -> return EXPR semi.
-   EXPR_STMT -> EXPR semi.
-   EXPR -> CALLABLE_EXPR assign EXPR | EXPR1.
-   EXPR1 -> EXPR2 eql EXPR1 | EXPR2.
-   EXPR2 -> EXPR3 lt EXPR2 | EXPR3.
-   EXPR3 -> EXPR4 add EXPR3 | EXPR4.
-   EXPR4 -> EXPR5 mul EXPR4 | EXPR5.
-   EXPR5 -> UNARY_EXPR | NUM_EXPR | STRING_EXPR | ARRAY_LITERAL | NULL_LITERAL | NEW_EXPR | YIELD_EXPR | CREATE_EXPR | CALLABLE_EXPR.
-   UNARY_EXPR -> unop EXPR5.
-   CALLABLE_EXPR -> CALL_EXPR | INDEX_EXPR | DOT_EXPR | VAR_EXPR | lp EXPR rp.
-   CALL_EXPR -> CALLABLE_EXPR EXPR_LIST.
-   EXPR_LIST -> lp EXPR_LIST1.
-   EXPR_LIST1 -> EXPR coma EXPR_LIST | rp.
-   INDEX_EXPR -> CALLABLE_EXPR ls EXPR rs.
-   DOT_EXPR -> CALLABLE_EXPR dot ident.
-   VAR_EXPR -> ident.
-   NUM_EXPR -> number.
-   STRING_EXPR -> string.
-   ARRAY_LITERAL -> ls ARRAY_LITERAL1.
-   ARRAY_LITERAL1 -> EXPR coma ARRAY_LITERAL1 | rs.
-   NULL_LITERAL -> null.
-   NEW_EXPR -> new STRUCT_LITERAL.
-   STRUCT_LITERAL -> lb STRUCT_LITERAL1.
-   STRUCT_LITERAL1 -> FIELD_LITERAL coma STRUCT_LITERAL1 | rs.
-   FIELD_LITERAL -> ident colon EXPR.
-   YIELD_EXPR -> YIELD_VALUE | YIELD_VOID.
-   YIELD_VALUE -> yield lp EXPR rp.
-   YIELD_VOID -> yield.
-   CREATE_EXPR -> create lp EXPR CREATE_ARGS.
-   CREATE_ARGS -> coma EXPR CREATE_ARGS | rp.
- *)
-
 type root = { stmts : top_stmt list; node_idx : int; loc : Location.location }
 
 and top_stmt =
@@ -104,7 +27,6 @@ and co_decl = {
   name : string;
   args : argument list;
   yield_type : typ;
-  param_type : typ option;
   body : stmt;
   node_idx : int;
   loc : Location.location;
@@ -158,7 +80,6 @@ and decl =
   | Field of field
 
 and expr =
-  | Invalid
   | BinExpr of bin_expr
   | UnaryExpr of unary_expr
   | CallExpr of call_expr
@@ -170,7 +91,6 @@ and expr =
   | ArrayLiteral of array_literal
   | NullLiteral of null_literal
   | NewExpr of new_expr
-  | YieldExpr of yield_expr
   | CreateExpr of create_expr
   | ResumeExpr of resume_expr
 
@@ -194,17 +114,11 @@ and fn_type = {
 and co_type = {
   args : typ list;
   yield : typ;
-  param : typ option;
   node_idx : int;
   loc : Location.location;
 }
 
-and co_obj_type = {
-  yield : typ;
-  param : typ option;
-  node_idx : int;
-  loc : Location.location;
-}
+and co_obj_type = { yield : typ; node_idx : int; loc : Location.location }
 
 and stmt =
   | Block of block
@@ -221,6 +135,7 @@ and stmt =
   | CoDecl of co_decl
   | AliasStmt of alias_stmt
   | IfResumeStmt of if_resume_stmt
+  | YieldStmt of yield_stmt
 
 and bin_expr = {
   lhs : expr;
@@ -277,18 +192,13 @@ and new_expr = {
 
 and null_literal = { node_idx : int; loc : Location.location }
 
-and yield_expr = {
+and yield_stmt = {
   value : expr option;
   node_idx : int;
   loc : Location.location;
 }
 
-and resume_expr = {
-  coroutine : expr;
-  value : expr option;
-  node_idx : int;
-  loc : Location.location;
-}
+and resume_expr = { coroutine : expr; node_idx : int; loc : Location.location }
 
 and create_expr = {
   coroutine : expr;
@@ -372,7 +282,7 @@ and node =
   | ArrayLiteral of array_literal
   | NullLiteral of null_literal
   | NewExpr of new_expr
-  | YieldExpr of yield_expr
+  | YieldStmt of yield_stmt
   | CreateExpr of create_expr
   | ResumeExpr of resume_expr
   | ForLoop of for_loop
@@ -396,7 +306,6 @@ let type_to_node (t : typ) : node =
 
 let expr_to_node (e : expr) : node =
   match e with
-  | Invalid -> failwith "Unreachable"
   | BinExpr y -> BinExpr y
   | UnaryExpr y -> UnaryExpr y
   | CallExpr y -> CallExpr y
@@ -408,7 +317,6 @@ let expr_to_node (e : expr) : node =
   | ArrayLiteral y -> ArrayLiteral y
   | NullLiteral y -> NullLiteral y
   | NewExpr y -> NewExpr y
-  | YieldExpr y -> YieldExpr y
   | CreateExpr y -> CreateExpr y
   | ResumeExpr y -> ResumeExpr y
 
@@ -428,6 +336,7 @@ let stmt_to_node (s : stmt) : node =
   | CoDecl y -> CoDecl y
   | AliasStmt y -> AliasStmt y
   | IfResumeStmt y -> IfResumeStmt y
+  | YieldStmt y -> YieldStmt y
 
 let decl_to_node (d : decl) : node =
   match d with
@@ -473,7 +382,7 @@ let node_loc n =
   | ArrayLiteral x -> x.loc
   | NullLiteral x -> x.loc
   | NewExpr x -> x.loc
-  | YieldExpr x -> x.loc
+  | YieldStmt x -> x.loc
   | CreateExpr x -> x.loc
   | ResumeExpr x -> x.loc
   | ForLoop x -> x.loc
@@ -598,7 +507,7 @@ let rec node_to_str (n : node) : string =
           s x.fields
       in
       Printf.sprintf "%s))" s
-  | YieldExpr x ->
+  | YieldStmt x ->
       Printf.sprintf "(yield %s)"
         (x.value |> Option.map expr_to_node |> Option.map node_to_str
        |> Option.value ~default:"_")
@@ -610,10 +519,7 @@ let rec node_to_str (n : node) : string =
         x.params
       ^ ")"
   | ResumeExpr x ->
-      Printf.sprintf "(resume %s %s)"
-        (x.coroutine |> expr_to_node |> node_to_str)
-        (x.value |> Option.map expr_to_node |> Option.map node_to_str
-       |> Option.value ~default:"_")
+      Printf.sprintf "(resume %s)" (x.coroutine |> expr_to_node |> node_to_str)
   | ForLoop x ->
       Printf.sprintf "(for %s %s %s)" x.iter_var
         (x.iterator |> expr_to_node |> node_to_str)

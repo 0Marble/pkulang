@@ -151,7 +151,7 @@ field_no_val:
     | var_name=TokIdent; TokColon; field_type=typ; TokComa { {var_name=fst var_name; field_type; value=None; node_idx = next_idx (); loc = snd var_name } }
 
 co_decl:
-    | start=TokCo; name=TokIdent; TokLp; args=separated_list(TokComa, argument); TokRp; yield_type=typ; body=fn_body { {name=fst name; args; yield_type; body; node_idx = next_idx (); loc = snd start; param_type = None; } } 
+    | start=TokCo; name=TokIdent; TokLp; args=separated_list(TokComa, argument); TokRp; yield_type=typ; body=fn_body { {name=fst name; args; yield_type; body; node_idx = next_idx (); loc = snd start;  } } 
 
 let_stmt:
     | TokLet; var_name=TokIdent; TokColon; var_type=typ; TokAssign; value=expr; TokSemi { {var_name=fst var_name; var_type; value; node_idx = next_idx (); loc = snd var_name; } }
@@ -180,10 +180,10 @@ fn_type:
     | start=TokFn; TokLp; args=separated_list(TokComa, typ); TokRp; ret=typ { {args; ret; node_idx = next_idx (); loc = snd start;} }
 
 co_type: 
-    | start=TokCo; TokLp; args=separated_list(TokComa, typ); TokRp; yield=typ { {args; yield; node_idx = next_idx (); loc = snd start; param=None;} }
+    | start=TokCo; TokLp; args=separated_list(TokComa, typ); TokRp; yield=typ { {args; yield; node_idx = next_idx (); loc = snd start; } }
 
 co_obj_type:
-    | start=TokCo; yield=typ {{yield; node_idx = next_idx (); loc = snd start; param = None; }}
+    | start=TokCo; yield=typ {{yield; node_idx = next_idx (); loc = snd start;  }}
 
 dot_type:
     | parent=parent_type; TokDot; child=TokIdent {{parent; child=fst child; node_idx = next_idx (); loc = snd child;}}
@@ -197,6 +197,7 @@ body_stmt:
     | return_stmt { (ReturnStmt $1 : stmt) }
     | expr_stmt { (Expr $1 : stmt) }
     | alias_stmt { (AliasStmt $1 : stmt) }
+    | yield_stmt { (YieldStmt $1 : stmt) }
 
 stmt:
     | body_stmt {$1}
@@ -299,7 +300,6 @@ expr5:
     | callable_expr { $1 }
 
 callable_expr:
-    | yield_expr { (YieldExpr $1:expr) }
     | resume_expr { (ResumeExpr $1:expr) }
     | create_expr { (CreateExpr $1:expr) }
     | num_expr { (NumExpr $1:expr) }
@@ -350,11 +350,11 @@ new_expr:
 field_literal:
     | name=TokIdent; TokColon; value=expr; {({name=fst name; value; node_idx = next_idx (); loc = snd name;}:field_literal)}
 
-yield_expr:
-    | start=TokYield; TokLp; value=option(expr); TokRp; {({value; node_idx = next_idx (); loc = snd start;}:yield_expr)}
+yield_stmt:
+    | start=TokYield; value=option(expr); TokSemi; {({value; node_idx = next_idx (); loc = snd start;}:yield_stmt)}
 
 resume_expr:
-    | start=TokResume; TokLp; coroutine=expr; TokRp; {({coroutine; node_idx=next_idx (); loc = snd start; value = None;}:resume_expr)}
+    | start=TokResume; TokLp; coroutine=expr; TokRp; {({coroutine; node_idx=next_idx (); loc = snd start; }:resume_expr)}
 
 create_expr:
     | start=TokCreate; TokLp; args=separated_nonempty_list(TokComa, expr); TokRp; {{coroutine=List.hd args; params=List.tl args; node_idx = next_idx (); loc = snd start; }}

@@ -67,12 +67,10 @@ let struct_literal () =
     (run_parser "new Foo{x:10,y:20}")
 
 let coroutines () =
-  check string "yield" "(yield (var a))" (run_parser "yield(a)");
-  check string "yield nothing" "(yield _)" (run_parser "yield()");
   check string "create coroutine" "(create (var f))" (run_parser "create(f)");
   check string "create coroutine with args" "(create (var f) (var a) (var b))"
     (run_parser "create(f, a, b)");
-  check string "resume" "(resume (var f) _)" (run_parser "resume(f)")
+  check string "resume" "(resume (var f))" (run_parser "resume(f)")
 
 let complicated () =
   let src = "foo(a+b(x,y[i])*(x*z(c,q,w,e)+1))(bar)[1,2,3]" in

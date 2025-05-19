@@ -35,7 +35,7 @@ let linked_list () =
     next: LinkedList,
 
     fn iterator() void {
-      yield(self.val);
+      yield self.val;
       if (self.next) self.next.iterator();
     }
   }
@@ -62,8 +62,8 @@ let linked_list () =
      (null)) (for i (call (var range) (num 0) (num 10)) (block (bin Assign \
      (var l) (new (type LinkedList) (fields (field_literal val (var i)) \
      (field_literal next (var l))))))) (let it (type CoroutineType) (create \
-     (dot (var l) iterator))) (call (var assert) (bin Eq (resume (var it) _) \
-     (num 9))) (call (var assert) (bin Eq (resume (var it) _) (num 8))) (for x \
+     (dot (var l) iterator))) (call (var assert) (bin Eq (resume (var it)) \
+     (num 9))) (call (var assert) (bin Eq (resume (var it)) (num 8))) (for x \
      (var it) (block (call (var print_int) (var x))))))))"
     (run_parser src)
 

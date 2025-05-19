@@ -49,7 +49,9 @@ let struct_decl () =
     "(struct Foo (field x (type int) _) (field y (type Bar) _))"
     (run_parser "struct Foo{x:int,y:Bar,}")
 
-let if_resume () =
+let coroutines () =
+  check string "yield" "(yield (var a))" (run_parser "yield a;");
+  check string "yield nothing" "(yield _)" (run_parser "yield;");
   check string "if_resume void" "(if_resume _ (var foo) (block) _)"
     (run_parser "if resume (foo) {}");
   check string "if_resume var" "(if_resume x (var foo) (block) _)"
@@ -70,6 +72,6 @@ let () =
           ("for", `Quick, for_loop);
           ("fn", `Quick, function_decl);
           ("struct", `Quick, struct_decl);
-          ("if_resume", `Quick, if_resume);
+          ("coroutines", `Quick, coroutines);
         ] );
     ]
