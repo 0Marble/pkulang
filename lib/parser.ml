@@ -457,30 +457,63 @@ and parse_stmt p : parser_state * Ast.stmt =
             loc = Location.union start (cur_loc p);
             node_idx = p.next_idx;
           } )
-  | TokIf ->
+  | TokIf -> (
       let start = t.loc in
-      let p = eat_tok TokLp p in
-      let p, condition = parse_expr p in
-      let p = eat_tok TokRp p in
-      let p, if_true = parse_stmt p in
-      let p, if_false = if_tok TokElse (fun _ p -> parse_stmt p) p in
-      let () =
-        match if_true with
-        | IfStmt _ | WhileLoop _ | ForLoop _ ->
-            Error.fail_at_spot "Surround with a block" p.src
-              (if_true |> Ast.stmt_to_node |> Ast.node_loc)
-              Error.Unknown
-        | _ -> ()
+      let p, (if_resume : Ast.stmt option) =
+        if_tok TokResume
+          (fun _ p ->
+            let p = eat_tok TokLp p in
+            let p, var =
+              if_tok TokString
+                (fun t p ->
+                  let s = t.str in
+                  let p = eat_tok TokColon p in
+                  (p, s))
+                p
+            in
+            let p, coroutine = parse_expr p in
+            let p = eat_tok TokRp p in
+            let p, if_ok = parse_stmt p in
+            let p, if_bad = if_tok TokElse (fun _ p -> parse_stmt p) p in
+            let (stmt : Ast.stmt) =
+              Ast.IfResumeStmt
+                {
+                  var;
+                  coroutine;
+                  if_ok;
+                  if_bad;
+                  loc = start;
+                  node_idx = p.next_idx;
+                }
+            in
+            (next_idx p, stmt))
+          p
       in
-      ( next_idx p,
-        Ast.IfStmt
-          {
-            condition;
-            if_true;
-            if_false;
-            loc = Location.union start (cur_loc p);
-            node_idx = p.next_idx;
-          } )
+      match if_resume with
+      | Some x -> (p, x)
+      | None ->
+          let p = eat_tok TokLp p in
+          let p, condition = parse_expr p in
+          let p = eat_tok TokRp p in
+          let p, if_true = parse_stmt p in
+          let p, if_false = if_tok TokElse (fun _ p -> parse_stmt p) p in
+          let () =
+            match if_true with
+            | IfStmt _ | WhileLoop _ | ForLoop _ ->
+                Error.fail_at_spot "Surround with a block" p.src
+                  (if_true |> Ast.stmt_to_node |> Ast.node_loc)
+                  Error.Unknown
+            | _ -> ()
+          in
+          ( next_idx p,
+            Ast.IfStmt
+              {
+                condition;
+                if_true;
+                if_false;
+                loc = Location.union start (cur_loc p);
+                node_idx = p.next_idx;
+              } ))
   | TokFor ->
       let start = t.loc in
       let p = eat_tok TokLp p in
