@@ -75,6 +75,9 @@
    CREATE_ARGS -> coma EXPR CREATE_ARGS | rp.
  *)
 
+let next_idx () = 69
+let to_op _ = failwith "Todo"
+
 type root = { stmts : top_stmt list; node_idx : int; loc : Location.location }
 
 and top_stmt =
