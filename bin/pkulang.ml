@@ -12,8 +12,7 @@ let read_input () =
   read_input' ""
 
 let do_eval src =
-  let toks = Tokenizer.tokenize src in
-  let _, root = Parser.parse_root { src; toks; next_idx = 0 } in
+  let root = Parser.parse_root src in
   print_newline ();
   Ast.node_to_str (Ast.Root root) |> print_endline
 

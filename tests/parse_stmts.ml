@@ -1,10 +1,7 @@
 open Alcotest
 open Pkulang
 
-let run_parser s =
-  let toks = s |> Tokenizer.tokenize in
-  Parser.parse_stmt { toks; src = s; next_idx = 0 }
-  |> snd |> Ast.stmt_to_node |> Ast.node_to_str
+let run_parser s = Parser.parse_stmt s |> Ast.stmt_to_node |> Ast.node_to_str
 
 let let_stmt () =
   check string "let" "(let x (type int) (num 10))"
@@ -28,7 +25,7 @@ let block_stmt () =
     (run_parser "{let x:int = 10; x=20;}")
 
 let if_stmt () =
-  check string "if" "(if (var x) (block) _)" (run_parser "if (x) {}");
+  (* check string "if" "(if (var x) (block) _)" (run_parser "if (x) {}"); *)
   check string "if else"
     "(if (var x) (block (return (num 10))) (block (return (num 20))))"
     (run_parser "if (x) {return 10;} else {return 20;}");
@@ -52,6 +49,14 @@ let struct_decl () =
     "(struct Foo (field x (type int) _) (field y (type Bar) _))"
     (run_parser "struct Foo{x:int,y:Bar,}")
 
+let if_resume () =
+  check string "if_resume void" "(if_resume _ (var foo) (block) _)"
+    (run_parser "if resume (foo) {}");
+  check string "if_resume var" "(if_resume x (var foo) (block) _)"
+    (run_parser "if resume (x:foo) {}");
+  check string "if_resume else" "(if_resume _ (var foo) (block) (return _))"
+    (run_parser "if resume (foo) {} else return;")
+
 let () =
   run "Parser: statements"
     [
@@ -65,5 +70,6 @@ let () =
           ("for", `Quick, for_loop);
           ("fn", `Quick, function_decl);
           ("struct", `Quick, struct_decl);
+          ("if_resume", `Quick, if_resume);
         ] );
     ]

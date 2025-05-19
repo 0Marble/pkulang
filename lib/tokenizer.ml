@@ -213,11 +213,11 @@ let tokenize src : token list =
             | Some t -> add_char (emit_tok t b) c
             | None ->
                 Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
-                  Error.Unknown))
+                  (Error.Error Unknown)))
     (* Error*)
     | _ ->
         Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
-          Error.Unknown
+          (Error.Error Unknown)
   in
 
   b.src ^ " "

@@ -1,10 +1,7 @@
 open Alcotest
 open Pkulang
 
-let run_parser s =
-  let toks = s |> Tokenizer.tokenize in
-  Ast.Root (Parser.parse_root { toks; src = s; next_idx = 0 } |> snd)
-  |> Ast.node_to_str
+let run_parser s = Ast.Root (Parser.parse_root s) |> Ast.node_to_str
 
 let range () =
   let src =
