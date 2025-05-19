@@ -422,7 +422,16 @@ let rec node_to_str (n : node) : string =
              (fun acc n ->
                Printf.sprintf "%s %s" acc (n |> decl_to_node |> node_to_str))
              (Printf.sprintf "(struct %s" x.name))
-  | CoDecl _ -> "?"
+  | CoDecl x ->
+      let s = Printf.sprintf "(co %s" x.name in
+      let s =
+        List.fold_left
+          (fun acc s -> Printf.sprintf "%s %s" acc (node_to_str (Argument s)))
+          s x.args
+      in
+      Printf.sprintf "%s %s %s)" s
+        (x.yield_type |> type_to_node |> node_to_str)
+        (x.body |> stmt_to_node |> node_to_str)
   | LetStmt x ->
       Printf.sprintf "(let %s %s %s)" x.var_name
         (x.var_type |> type_to_node |> node_to_str)
@@ -440,9 +449,26 @@ let rec node_to_str (n : node) : string =
       Printf.sprintf "(dot_type %s %s)"
         (x.parent |> type_to_node |> node_to_str)
         x.child
-  | FnType _ -> "?"
-  | CoType _ -> "?"
-  | CoObjType _ -> "?"
+  | FnType x ->
+      let s = "(fn_type " in
+      let s =
+        List.fold_left
+          (fun acc s ->
+            Printf.sprintf "%s %s" acc (node_to_str (type_to_node s)))
+          s x.args
+      in
+      Printf.sprintf "%s %s)" s (x.ret |> type_to_node |> node_to_str)
+  | CoType x ->
+      let s = "(co_type " in
+      let s =
+        List.fold_left
+          (fun acc s ->
+            Printf.sprintf "%s %s" acc (node_to_str (type_to_node s)))
+          s x.args
+      in
+      Printf.sprintf "%s %s)" s (x.yield |> type_to_node |> node_to_str)
+  | CoObjType x ->
+      Printf.sprintf "(co_obj %s)" (x.yield |> type_to_node |> node_to_str)
   | Block x ->
       let s = Printf.sprintf "(block" in
       let s =
