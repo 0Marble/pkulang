@@ -220,6 +220,7 @@ and stmt =
   | StructDecl of struct_decl
   | CoDecl of co_decl
   | AliasStmt of alias_stmt
+  | IfResumeStmt of if_resume_stmt
 
 and bin_expr = {
   lhs : expr;
@@ -328,6 +329,15 @@ and return_stmt = {
   loc : Location.location;
 }
 
+and if_resume_stmt = {
+  var : string option;
+  coroutine : expr;
+  if_ok : stmt;
+  if_bad : stmt option;
+  node_idx : int;
+  loc : Location.location;
+}
+
 and field_literal = {
   name : string;
   value : expr;
@@ -370,6 +380,7 @@ and node =
   | ContinueStmt of continue_stmt
   | BreakStmt of break_stmt
   | IfStmt of if_stmt
+  | IfResumeStmt of if_resume_stmt
   | ReturnStmt of return_stmt
   | FieldLiteral of field_literal
   | Invalid
@@ -416,6 +427,7 @@ let stmt_to_node (s : stmt) : node =
   | StructDecl y -> StructDecl y
   | CoDecl y -> CoDecl y
   | AliasStmt y -> AliasStmt y
+  | IfResumeStmt y -> IfResumeStmt y
 
 let decl_to_node (d : decl) : node =
   match d with
@@ -471,6 +483,7 @@ let node_loc n =
   | IfStmt x -> x.loc
   | ReturnStmt x -> x.loc
   | FieldLiteral x -> x.loc
+  | IfResumeStmt x -> x.loc
   | Invalid -> failwith "unreachable"
 
 let rec node_to_str (n : node) : string =
@@ -616,6 +629,13 @@ let rec node_to_str (n : node) : string =
         (x.condition |> expr_to_node |> node_to_str)
         (x.if_true |> stmt_to_node |> node_to_str)
         (x.if_false |> Option.map stmt_to_node |> Option.map node_to_str
+       |> Option.value ~default:"_")
+  | IfResumeStmt x ->
+      Printf.sprintf "(if_resume %s %s %s %s)"
+        (Option.value ~default:"_" x.var)
+        (x.coroutine |> expr_to_node |> node_to_str)
+        (x.if_ok |> stmt_to_node |> node_to_str)
+        (x.if_bad |> Option.map stmt_to_node |> Option.map node_to_str
        |> Option.value ~default:"_")
   | ReturnStmt x ->
       Printf.sprintf "(return %s)"
