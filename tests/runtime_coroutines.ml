@@ -67,6 +67,29 @@ let ordering () =
        ]
        100)
 
+let nested () =
+  check string "Nested" "10\n20\n30\n"
+    (interpret
+       [
+         Alloca 2;
+         Create (Register 0, [||], Relative 7);
+         Resume (Register 1, Location (Register 0), Static 1000);
+         Builtin ([| Location (Register 1) |], "print");
+         Resume (Register 1, Location (Register 0), Static 1000);
+         Builtin ([| Location (Register 1) |], "print");
+         Builtin ([| Number 30 |], "print");
+         Halt;
+         Yield (Number 10);
+         Call (Void, [||], Relative 3);
+         Ret Null;
+         Trap;
+         Yield (Number 20);
+         Call (Void, [||], Relative 3);
+         Ret Null;
+         Trap;
+       ]
+       100)
+
 let range () =
   check string "range" "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
     (interpret
@@ -98,6 +121,7 @@ let () =
           ("simple", `Quick, simple);
           ("multiple_yield", `Quick, multiple_yield);
           ("ordering", `Quick, ordering);
+          ("nested", `Quick, nested);
           ("range", `Quick, range);
         ] );
     ]
