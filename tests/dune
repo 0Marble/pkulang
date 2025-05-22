@@ -42,3 +42,8 @@
  (name runtime_objs)
  (modules runtime_objs)
  (libraries pkulang alcotest))
+
+(test
+ (name test_symbol_table)
+ (modules test_symbol_table)
+ (libraries pkulang alcotest))
