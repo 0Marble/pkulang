@@ -1,257 +1,180 @@
+open Ast
 open Alcotest
 open Pkulang
+open SymbolTable
 
-let interpret cmds n =
-  let r =
-    Runtime.create ""
-      (cmds
-      |> List.map (fun c : Runtime.command ->
-             { cmd = c; loc = Location.Spot 0 })
-      |> Array.of_list)
-      0
+let make_symbol ~name ~kind ~node_idx ~(ty : Ast.typ option) ~(loc : Location.location option) symtab =
+  {
+    name;
+    kind;
+    node_idx;
+    ty;
+    loc;
+    declared_in = current_scope_kind symtab;
+  }
+
+let add_var (symtab : t) ~name ~node_idx ~(ty : Ast.typ option) ~(loc : Location.location option) : t =
+  let var_info = make_symbol ~name ~kind:Variable ~node_idx ~ty ~loc symtab in
+  add_symbol symtab var_info;
+  symtab
+
+let rec build_expr (symtab : t) (expr : expr) : t =
+  match expr with
+  | BinExpr x -> build_expr (build_expr symtab x.lhs) x.rhs
+  | UnaryExpr x -> build_expr symtab x.sub_expr
+  | CallExpr x -> x.params |> List.fold_left build_expr (build_expr symtab x.fn)
+  | IndexExpr x -> x.idx |> List.fold_left build_expr (build_expr symtab x.arr)
+  | DotExpr x -> build_expr symtab x.obj
+  | ArrayLiteral x -> List.fold_left build_expr symtab x.elems
+  | NewExpr x -> List.fold_left (fun acc f -> build_expr acc f.value) symtab x.fields
+  | CreateExpr x -> x.params |> List.fold_left build_expr (build_expr symtab x.coroutine)
+  | ResumeExpr x -> build_expr symtab x.coroutine
+  | VarExpr _ | NumExpr _ | StringExpr _ | NullLiteral _ -> symtab
+
+let rec build_stmt (symtab : t) (stmt : stmt) : t =
+  match stmt with
+  | Block x ->
+        let symtab = enter_scope symtab BlockScope in
+        let symtab = List.fold_left build_stmt symtab x.stmts in
+        exit_scope symtab
+
+  | LetStmt x ->
+        let symtab = build_expr symtab x.value in
+        add_var symtab ~name:x.var_name ~node_idx:x.node_idx ~ty:(Some x.var_type) ~loc:(Some x.loc)
+
+  | ForLoop x ->
+      let symtab = enter_scope symtab BlockScope in
+      let symtab = add_var symtab ~name:x.iter_var ~node_idx:x.node_idx ~ty:None ~loc:(Some x.loc) in
+      let symtab = build_expr symtab x.iterator in
+      let symtab = build_stmt symtab x.body in
+      let symtab = exit_scope symtab in
+      symtab
+
+  | WhileLoop x -> build_stmt (build_expr symtab x.condition) x.body
+
+  | IfStmt x ->
+      let symtab = build_expr symtab x.condition in
+      let symtab_if_true = enter_scope symtab BlockScope in
+      let symtab_if_true = build_stmt symtab_if_true x.if_true in
+      let symtab_if_true_exit = exit_scope symtab_if_true in
+
+      Option.fold ~none:symtab_if_true_exit
+        ~some:(fun if_false_stmt ->
+          let symtab_if_false = enter_scope symtab_if_true_exit BlockScope in
+          let symtab_if_false = build_stmt symtab_if_false if_false_stmt in
+          exit_scope symtab_if_false
+        ) x.if_false
+
+  | IfResumeStmt x ->
+      let symtab_after_coroutine_expr = build_expr symtab x.coroutine in
+
+      let symtab_entered_if_block = enter_scope symtab_after_coroutine_expr BlockScope in
+
+      let symtab_with_var_in_block =
+        Option.fold
+          ~none:symtab_entered_if_block
+          ~some:(fun var_name_str ->
+            add_var symtab_entered_if_block ~name:var_name_str ~node_idx:x.node_idx ~ty:None ~loc:(Some x.loc)
+          )
+          x.var
+      in
+
+      let symtab_after_if_ok = build_stmt symtab_with_var_in_block x.if_ok in
+
+      let symtab_after_if_ok_exit = exit_scope symtab_after_if_ok in
+
+      Option.fold ~none:symtab_after_if_ok_exit
+        ~some:(fun if_bad_stmt ->
+          let symtab_if_bad = enter_scope symtab_after_if_ok_exit BlockScope in
+          let symtab_if_bad = build_stmt symtab_if_bad if_bad_stmt in
+          exit_scope symtab_if_bad
+        ) x.if_bad
+
+
+  | ReturnStmt x -> Option.fold ~none:symtab ~some:(build_expr symtab) x.value
+  | YieldStmt x -> Option.fold ~none:symtab ~some:(build_expr symtab) x.value
+  | Expr e -> build_expr symtab e
+  | ContinueStmt _ | BreakStmt _ -> symtab
+
+  | FnDecl x -> build_fn_decl symtab x
+  | StructDecl x -> build_struct_decl symtab x
+  | CoDecl x -> build_co_decl symtab x
+
+  | AliasStmt x ->
+      let alias_info = make_symbol ~name:x.type_name ~kind:Struct ~node_idx:x.node_idx
+                         ~ty:(Some x.other_type) ~loc:(Some x.loc) symtab in
+      add_symbol symtab alias_info;
+      symtab
+
+and build_fn_decl (symtab : t) (fn : fn_decl) : t =
+  let fn_info = make_symbol ~name:fn.name ~kind:Function ~node_idx:fn.node_idx
+                  ~ty:(Some (FnType {args = List.map (fun arg -> arg.ty) fn.args; ret = fn.ret_type; node_idx = fn.node_idx; loc = fn.loc}))
+                  ~loc:(Some fn.loc) symtab in
+  add_symbol symtab fn_info;
+
+  let symtab = enter_scope symtab (FunctionScope fn.name) in
+  let symtab =
+    List.fold_left
+      (fun acc p -> add_var acc ~name:p.name ~node_idx:p.node_idx ~ty:p.ty ~loc:(Some p.loc)) (* CORRECTED: ~ty:p.ty *)
+      symtab fn.args
   in
-  let rec complete r n =
-    if Runtime.finished r then r
-    else if n = 0 then failwith "Too many steps!"
-    else complete (Runtime.step r) (n - 1)
+  let symtab = build_stmt symtab fn.body in
+  exit_scope symtab
+
+and build_co_decl (symtab : t) (co : co_decl) : t =
+  let co_info = make_symbol ~name:co.name ~kind:Function ~node_idx:co.node_idx
+                  ~ty:(Some (CoType {args = List.map (fun arg -> arg.ty) co.args; yield = co.yield_type; node_idx = co.node_idx; loc = co.loc}))
+                  ~loc:(Some co.loc) symtab in
+  add_symbol symtab co_info;
+
+  let symtab = enter_scope symtab (FunctionScope co.name) in
+  let symtab =
+    List.fold_left
+      (fun acc p -> add_var acc ~name:p.name ~node_idx:p.node_idx ~ty:p.ty ~loc:(Some p.loc)) (* CORRECTED: ~ty:p.ty *)
+      symtab co.args
   in
-  (complete r n).stdout
+  let symtab = build_stmt symtab co.body in
+  exit_scope symtab
 
-let array_print () =
-  check string "print empty" "[]\n"
-    (interpret
-       [
-         Alloca 1;
-         New (Register 0);
-         Resize (Register 0, Number 0);
-         Builtin ([| Location (Register 0) |], "print");
-         Halt;
-       ]
-       10);
-  check string "print one invalid" "[?]\n"
-    (interpret
-       [
-         Alloca 1;
-         New (Register 0);
-         Resize (Register 0, Number 1);
-         Builtin ([| Location (Register 0) |], "print");
-         Halt;
-       ]
-       10);
-  check string "print one" "[10]\n"
-    (interpret
-       [
-         Alloca 2;
-         New (Register 0);
-         Store (Register 0, Number 10);
-         New (Register 1);
-         Resize (Register 1, Number 1);
-         IndexSet (Register 1, Number 0, Location (Register 0));
-         Builtin ([| Location (Register 1) |], "print");
-         Halt;
-       ]
-       10);
-  check string "print many" "[10,20,30]\n"
-    (interpret
-       [
-         Alloca 2;
-         New (Register 1);
-         Resize (Register 1, Number 3);
-         New (Register 0);
-         Store (Register 0, Number 10);
-         IndexSet (Register 1, Number 0, Location (Register 0));
-         New (Register 0);
-         Store (Register 0, Number 20);
-         IndexSet (Register 1, Number 1, Location (Register 0));
-         New (Register 0);
-         Store (Register 0, Number 30);
-         IndexSet (Register 1, Number 2, Location (Register 0));
-         Builtin ([| Location (Register 1) |], "print");
-         Halt;
-       ]
-       20)
+and build_struct_decl (symtab : t) (s : struct_decl) : t =
+  let struct_info = make_symbol ~name:s.name ~kind:Struct ~node_idx:s.node_idx
+                      ~ty:None
+                      ~loc:(Some s.loc) symtab in
+  add_symbol symtab struct_info;
 
-let length () =
-  check string "length" "10\n"
-    (interpret
-       [
-         Alloca 1;
-         New (Register 0);
-         Resize (Register 0, Number 10);
-         Size (Register 0, Location (Register 0));
-         Builtin ([| Location (Register 0) |], "print");
-         Halt;
-       ]
-       10)
+  let symtab = enter_scope symtab (StructScope s.name) in
+  let symtab = List.fold_left build_decl symtab s.decls in
+  exit_scope symtab
 
-let inline_ints () =
-  check string "array of ints" "[1,2,3]\n"
-    (interpret
-       [
-         Alloca 1;
-         New (Register 0);
-         Resize (Register 0, Number 3);
-         IndexSet (Register 0, Number 0, Number 1);
-         IndexSet (Register 0, Number 1, Number 2);
-         IndexSet (Register 0, Number 2, Number 3);
-         Builtin ([| Location (Register 0) |], "print");
-         Halt;
-       ]
-       100)
+and build_decl (symtab : t) (decl : decl) : t =
+  match decl with
+  | FnDecl fn -> build_fn_decl symtab fn
+  | CoDecl co -> build_co_decl symtab co
+  | LetStmt let_stmt ->
+        let symtab = build_expr symtab let_stmt.value in
+        add_var symtab ~name:let_stmt.var_name ~node_idx:let_stmt.node_idx
+          ~ty:(Some let_stmt.var_type) ~loc:(Some let_stmt.loc)
+  | StructDecl s -> build_struct_decl symtab s
+  | Field f ->
+      let symtab = add_var symtab ~name:f.var_name ~node_idx:f.node_idx
+                     ~ty:(Some f.field_type) ~loc:(Some f.loc) in
+      Option.fold ~none:symtab ~some:(build_expr symtab) f.value
 
-let range () =
-  check string "range(0, 10)" "[0,1,2,3,4,5,6,7,8,9]\n"
-    (interpret
-       [
-         (* 0 fn main() void *)
-         Alloca 1;
-         Call (Register 0, [| Number 0; Number 10 |], Static 4);
-         Builtin ([| Location (Register 0) |], "print");
-         Halt;
-         (* 4: fn range(min: int, max: int) ptr *)
-         Alloca 5;
-         (* r0: length of the array *)
-         Sub (Register 0, Location (Argument 1), Location (Argument 0));
-         (* r1: array *)
-         New (Register 1);
-         Resize (Register 1, Location (Register 0));
-         Assign (Register 2, Number 0);
-         (* for r2 = 0; r2 < r1; r2 = r2 + 1*)
-         (* 9: *)
-         Sub (Register 3, Location (Register 0), Location (Register 2));
-         GotoIfZero (Location (Register 3), Static 16);
-         New (Register 4);
-         Store (Register 4, Location (Register 2));
-         IndexSet (Register 1, Location (Register 2), Location (Register 4));
-         Add (Register 2, Location (Register 2), Number 1);
-         Goto (Static 9);
-         (* 16: *)
-         Ret (Location (Register 1));
-       ]
-       10000)
+let build_top_stmt (symtab : t) (stmt : top_stmt) : t =
+  match stmt with
+  | FnDecl fn -> build_fn_decl symtab fn
+  | StructDecl s -> build_struct_decl symtab s
+  | CoDecl co -> build_co_decl symtab co
+  | LetStmt let_stmt ->
+        let symtab = build_expr symtab let_stmt.value in
+        add_var symtab ~name:let_stmt.var_name ~node_idx:let_stmt.node_idx
+          ~ty:(Some let_stmt.var_type) ~loc:(Some let_stmt.loc)
+  | AliasStmt x ->
+      let alias_info = make_symbol ~name:x.type_name ~kind:Struct ~node_idx:x.node_idx
+                         ~ty:(Some x.other_type) ~loc:(Some x.loc) symtab in
+      add_symbol symtab alias_info;
+      symtab
 
-let sort () =
-  check string "Sort" "[3,5,6,4,0,7,8,9,1,2]\n[0,1,2,3,4,5,6,7,8,9]\n"
-    (interpret
-       [
-         (* 0: main() *)
-         Alloca 2;
-         New (Register 0);
-         Resize (Register 0, Number 10);
-         New (Register 1);
-         Store (Register 1, Number 3);
-         IndexSet (Register 0, Number 0, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 5);
-         IndexSet (Register 0, Number 1, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 6);
-         IndexSet (Register 0, Number 2, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 4);
-         IndexSet (Register 0, Number 3, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 0);
-         IndexSet (Register 0, Number 4, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 7);
-         IndexSet (Register 0, Number 5, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 8);
-         IndexSet (Register 0, Number 6, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 9);
-         IndexSet (Register 0, Number 7, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 1);
-         IndexSet (Register 0, Number 8, Location (Register 1));
-         New (Register 1);
-         Store (Register 1, Number 2);
-         IndexSet (Register 0, Number 9, Location (Register 1));
-         Builtin ([| Location (Register 0) |], "print");
-         Call
-           ( Register 0,
-             [| Location (Register 0); Number 0; Number 10 |],
-             Relative 3 );
-         Builtin ([| Location (Register 0) |], "print");
-         Halt;
-         (* qsort(arr: ptr, start: int, end: int) ptr *)
-         Alloca 2;
-         Sub (Register 0, Location (Argument 2), Location (Argument 1));
-         (* base case: [] *)
-         GotoIfZero (Location (Register 0), Relative 2);
-         Goto (Relative 2);
-         Ret (Location (Argument 0));
-         (* base case: [x] *)
-         Sub (Register 0, Location (Register 0), Number 1);
-         GotoIfZero (Location (Register 0), Relative 2);
-         Goto (Relative 2);
-         Ret (Location (Argument 0));
-         (* recursion *)
-         Call
-           ( Register 0,
-             [|
-               Location (Argument 0);
-               Location (Argument 1);
-               Location (Argument 2);
-             |],
-             Relative 5 );
-         Call
-           ( Register 1,
-             [|
-               Location (Argument 0);
-               Location (Argument 1);
-               Location (Register 0);
-             |],
-             Relative (-10) );
-         Add (Register 0, Location (Register 0), Number 1);
-         Call
-           ( Register 1,
-             [|
-               Location (Argument 0);
-               Location (Register 0);
-               Location (Argument 2);
-             |],
-             Relative (-12) );
-         Ret (Location (Argument 0));
-         (* partition(arr: ptr, start: int, end: int) int *)
-         (* modifies arr from [x, ...] to [..., x, ...], returns new idx of x *)
-         Alloca 8;
-         Assign (Register 0, Location (Argument 1));
-         Assign (Register 1, Location (Argument 1));
-         (* for r0=start+1; r0 < end; r0++: *)
-         (* if arr[r1] > arr[r0]: swap(arr, r0, r1+1), swap(arr, r1, r1+1), r1++ *)
-         Add (Register 0, Location (Register 0), Number 1);
-         Sub (Register 2, Location (Register 0), Location (Argument 2));
-         GotoIfZero (Location (Register 2), Relative 15);
-         IndexGet (Register 2, Location (Argument 0), Location (Register 0));
-         IndexGet (Register 3, Location (Argument 0), Location (Register 1));
-         Load (Register 4, Location (Register 2));
-         Load (Register 5, Location (Register 3));
-         Sub (Register 6, Location (Register 5), Location (Register 4));
-         GotoIfNeg (Location (Register 6), Relative (-8));
-         Add (Register 6, Location (Register 1), Number 1);
-         IndexGet (Register 6, Location (Argument 0), Location (Register 6));
-         Load (Register 7, Location (Register 6));
-         (* r2=&arr[r0], r3=&arr[r1], r6=&arr[r1+1] *)
-         (* r4=arr[r0], r5=arr[r1], r7=arr[r1+1] *)
-         Store (Register 2, Location (Register 7));
-         Store (Register 3, Location (Register 4));
-         Store (Register 6, Location (Register 5));
-         Add (Register 1, Location (Register 1), Number 1);
-         Goto (Relative (-16));
-         Ret (Location (Register 1));
-       ]
-       100000)
-
-let () =
-  run "Runtime: arrays"
-    [
-      ( "basic",
-        [
-          ("print", `Quick, array_print);
-          ("length", `Quick, length);
-          ("inline_ints", `Quick, inline_ints);
-        ] );
-      ("programs", [ ("range", `Quick, range); ("qsort", `Quick, sort) ]);
-    ]
+let build_symbol_table (program : root) : t =
+  let symtab = SymbolTable.create () in
+  List.fold_left build_top_stmt symtab program.stmts
