@@ -172,12 +172,20 @@ let dump t : string =
   Buffer.contents buf
 
 let rec find_struct_scope scope name =
+  print_endline @@ string_of_scope_kind scope.kind;
   match scope.kind with
   | StructScope sname when sname = name -> Some scope
-  | _ ->
-      List.find_map
-        (fun child -> find_struct_scope child name)
-        !(scope.children)
+  | _ -> (
+      match
+        List.find_map
+          (fun s -> if s.kind = StructScope name then Some s else None)
+          !(scope.children)
+      with
+      | Some x -> Some x
+      | _ ->
+          scope.parent
+          |> Option.map (fun s -> find_struct_scope s name)
+          |> Option.join)
 
 let rec find_child_scope_by_kind (parent_scope : scope)
     (kind_filter : scope_kind) : scope option =

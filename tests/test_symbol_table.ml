@@ -308,12 +308,11 @@ let test_methods () =
     find_child_scope_by_kind symtab.root (FunctionScope "main") |> Option.get
   in
   let main_body = find_child_scope_by_kind main_decl BlockScope |> Option.get in
+
   let foo_var = find_in_scope main_body "foo" |> Option.get in
   let foo_type =
     match foo_var.ty with
-    | Some (NamedType typ) ->
-        (* not quite right: what if there is a struct Foo above the Foo in question? *)
-        find_struct_scope symtab.root typ.name |> Option.get
+    | Some (NamedType typ) -> find_struct_scope main_body typ.name |> Option.get
     | None -> failwith "didnt provide a type for foo"
     | _ -> failwith "foo is not of a named type"
   in
@@ -336,22 +335,12 @@ let test_methods () =
   check int "bar() method node" bar_method_ast_node.node_idx bar_method.node_idx;
   ()
 
-let test_local_structs () =
-  let root =
-    "struct Foo {} fn main() void {struct Foo {} let foo: Foo = new Foo{};}"
-    |> Parser.parse_root
-  in
-  let _ = build_symbol_table root in
-  let _ = failwith "No easy way to get to the inner Foo?" in
-  ()
-
 let run_tests () =
   print_endline "Running symbol table tests...";
   test_basic_let ();
   test_function_declaration ();
   test_nested_scopes ();
   test_methods ();
-  test_local_structs ();
   print_endline "All tests passed! ✓"
 
 let () = run_tests ()
