@@ -1,7 +1,19 @@
-(menhir (modules lalr))
+(menhir
+ (modules lalr))
 
-(library 
-  (name pkulang) 
-  (modules location tokenizer error ast parser trie runtime heap value stack lalr symbolTable symbolTableBuilder)
-)
-
+(library
+ (name pkulang)
+ (modules
+  location
+  tokenizer
+  error
+  ast
+  parser
+  trie
+  runtime
+  heap
+  value
+  stack
+  lalr
+  symbolTable
+  symbolTableBuilder))
