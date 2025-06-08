@@ -16,6 +16,24 @@ let interpret r n =
   in
   (complete r n).stdout
 
+let while_loop () =
+  let src =
+    {|
+  fn main() void {
+    let i: int = 0;
+    let sum: int = 0;
+    while(i < 10) {
+      sum = sum + i;
+      i = i + 1;
+    }
+    print_int(sum);
+    return;
+  }
+  |}
+  in
+  let r = compile src in
+  check string "Sum 0..10" "45\n" (interpret r 1000)
+
 let fib_test () =
   let src =
     {|
@@ -33,4 +51,6 @@ let fib_test () =
   let r = compile src in
   check string "Fib(10)" "55\n" (interpret r 10000)
 
-let () = run "Codegen" [ ("programs", [ ("fib", `Quick, fib_test) ]) ]
+let () =
+  run "Codegen"
+    [ ("programs", [ ("fib", `Quick, fib_test); ("sum", `Quick, while_loop) ]) ]

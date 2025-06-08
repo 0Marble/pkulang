@@ -279,7 +279,7 @@ binop4:
     | TokDiv { ( TokDiv $1, snd $1)}
 
 expr:
-    | lhs=expr; op=binop0; rhs=callable_expr { BinExpr {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } }
+    | lhs=expr; op=binop0; rhs=expr1; { BinExpr {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } }
     | expr1 {$1}
 
 expr1:

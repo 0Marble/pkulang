@@ -50,12 +50,27 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
   let rec codegen_root (root : Ast.root) = List.iter codegen_top_stmt root.stmts
   and codegen_top_stmt (stmt : Ast.top_stmt) =
     match stmt with
-    | Ast.FnDecl f -> codegen_fn f
+    | Ast.FnDecl x -> codegen_fn x
     | Ast.StructDecl _ -> failwith "Todo"
-    | Ast.CoDecl _ -> failwith "Todo"
+    | Ast.CoDecl x -> codegen_co x
     | Ast.LetStmt _ -> failwith "Todo"
     | Ast.AliasStmt _ -> failwith "Todo"
   and codegen_fn (f : Ast.fn_decl) =
+    let registers = Hashtbl.create 64 in
+    let backpatch_locals_cnt = !ptr in
+    Hashtbl.add function_addresses f.node_idx !ptr;
+    let prev_scope = !cur_scope in
+    cur_scope :=
+      SymbolTable.find_child_scope_by_kind !cur_scope (FunctionScope f.name)
+      |> Option.get;
+    emit { cmd = Trap; loc = Location.Spot 0 };
+    List.iteri (fun i arg -> codegen_arg i arg registers) f.args;
+    codegen_stmt f.body registers;
+    let locals_cnt = Hashtbl.length registers in
+    cmds.(backpatch_locals_cnt) <- { cmd = Alloca locals_cnt; loc = f.loc };
+    cur_scope := prev_scope;
+    ()
+  and codegen_co (f : Ast.co_decl) =
     let registers = Hashtbl.create 64 in
     let backpatch_locals_cnt = !ptr in
     Hashtbl.add function_addresses f.node_idx !ptr;
@@ -91,7 +106,15 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
         emit
           { cmd = Assign (Register reg, value |> expr_to_operand); loc = x.loc }
     | Ast.ForLoop _ -> failwith "Todo"
-    | Ast.WhileLoop _ -> failwith "Todo"
+    | Ast.WhileLoop x ->
+        let start_addr = !ptr in
+        let cond = codegen_expr x.condition registers |> expr_to_operand in
+        let backpatch_goto_end = !ptr in
+        emit { cmd = Trap; loc = Location.Spot 0 };
+        codegen_stmt x.body registers;
+        emit { cmd = Goto (Static start_addr); loc = x.loc };
+        cmds.(backpatch_goto_end) <-
+          { cmd = GotoIfZero (cond, Static !ptr); loc = x.loc }
     | Ast.ContinueStmt _ -> failwith "Todo"
     | Ast.BreakStmt _ -> failwith "Todo"
     | Ast.IfStmt x -> (
@@ -125,8 +148,49 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     | Ast.StructDecl _ -> failwith "Todo"
     | Ast.CoDecl _ -> failwith "Todo"
     | Ast.AliasStmt _ -> failwith "Todo"
-    | Ast.IfResumeStmt _ -> failwith "Todo"
-    | Ast.YieldStmt _ -> failwith "Todo"
+    | Ast.IfResumeStmt x ->
+        let parent_scope = !cur_scope in
+        let inner_scopes =
+          SymbolTable.collect_scopes_by_kind !cur_scope BlockScope []
+        in
+        let if_ok_scope = List.hd inner_scopes in
+        cur_scope := if_ok_scope;
+        let coro = codegen_expr x.coroutine registers |> expr_to_operand in
+
+        let var_dest =
+          match x.var with
+          | Some _ ->
+              let reg = Hashtbl.length registers in
+              Hashtbl.add registers x.node_idx (Register reg);
+              Stack.Register reg
+          | None -> Stack.Void
+        in
+        let backpatch_if_bad = !ptr in
+        emit { cmd = Trap; loc = Location.Spot 0 };
+
+        codegen_stmt x.if_ok registers;
+        (match x.if_bad with
+        | Some if_bad ->
+            let if_bad_scope = List.nth inner_scopes 1 in
+            cur_scope := if_bad_scope;
+            let backpatch_goto_end = !ptr in
+            emit { cmd = Trap; loc = Location.Spot 0 };
+            cmds.(backpatch_if_bad) <-
+              { cmd = Resume (var_dest, coro, Static !ptr); loc = x.loc };
+            codegen_stmt if_bad registers;
+            cmds.(backpatch_goto_end) <-
+              { cmd = Goto (Static !ptr); loc = x.loc }
+        | None ->
+            cmds.(backpatch_if_bad) <-
+              { cmd = Resume (var_dest, coro, Static !ptr); loc = x.loc });
+        cur_scope := parent_scope
+    | Ast.YieldStmt x ->
+        let v =
+          match x.value with
+          | Some v -> codegen_expr v registers |> expr_to_operand
+          | None -> Runtime.Null
+        in
+        emit { cmd = Yield v; loc = x.loc }
   and codegen_expr (e : Ast.expr) (registers : (int, Stack.location) Hashtbl.t)
       : expr_value =
     match e with
@@ -146,6 +210,17 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
             let reg = temp_register registers in
             emit { cmd = Lt (reg, lhs, rhs); loc = x.loc };
             Operand (Location reg)
+        | Tokenizer.TokAssign ->
+            let lhs =
+              match lhs with
+              | Location lhs -> lhs
+              | _ ->
+                  Error.fail_at_spot
+                    "Can not assign to a value with no location" src x.loc
+                    (Error.Error Unknown)
+            in
+            emit { cmd = Assign (lhs, rhs); loc = x.loc };
+            Operand (Location lhs)
         | _ -> failwith "Todo")
     | Ast.UnaryExpr _ -> failwith "Todo"
     | Ast.CallExpr x ->
@@ -187,7 +262,16 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     | Ast.ArrayLiteral _ -> failwith "Todo"
     | Ast.NullLiteral _ -> failwith "Todo"
     | Ast.NewExpr _ -> failwith "Todo"
-    | Ast.CreateExpr _ -> failwith "Todo"
+    | Ast.CreateExpr x ->
+        let reg = temp_register registers in
+        let coro_ptr = codegen_expr x.coroutine registers |> expr_to_address in
+        let args =
+          List.map
+            (fun a -> codegen_expr a registers |> expr_to_operand)
+            x.params
+        in
+        emit { cmd = Create (reg, Array.of_list args, coro_ptr); loc = x.loc };
+        Operand (Location reg)
     | Ast.ResumeExpr _ -> failwith "Todo"
   in
 
