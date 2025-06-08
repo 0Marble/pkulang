@@ -6,7 +6,7 @@ type scope_kind =
   | FunctionScope of string
   | StructScope of string
 
-type symbol_kind = Variable | Function | Struct
+type symbol_kind = Variable | Field | Function | Struct
 
 type symbol_info = {
   name : string;
@@ -140,7 +140,11 @@ let string_of_scope_kind (kind : scope_kind) : string =
   | StructScope name -> "struct(" ^ name ^ ")"
 
 let string_of_symbol_kind (kind : symbol_kind) : string =
-  match kind with Variable -> "var" | Function -> "fn" | Struct -> "struct"
+  match kind with
+  | Variable -> "var"
+  | Field -> "field"
+  | Function -> "fn"
+  | Struct -> "struct"
 
 let rec dump_scope buf indent scope =
   let indent_str = String.make indent ' ' in

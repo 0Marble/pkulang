@@ -177,10 +177,11 @@ and build_decl (symtab : t) (decl : decl) : t =
         ~ty:(Some let_stmt.var_type) ~loc:(Some let_stmt.loc)
   | StructDecl s -> build_struct_decl symtab s
   | Field f ->
-      let symtab =
-        add_var symtab ~name:f.var_name ~node_idx:f.node_idx
-          ~ty:(Some f.field_type) ~loc:(Some f.loc)
+      let var_info =
+        make_symbol ~name:f.var_name ~kind:Field ~node_idx:f.node_idx
+          ~ty:(Some f.field_type) ~loc:(Some f.loc) symtab
       in
+      add_symbol symtab var_info;
       Option.fold ~none:symtab ~some:(build_expr symtab) f.value
 
 let build_top_stmt (symtab : t) (stmt : top_stmt) : t =

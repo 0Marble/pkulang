@@ -291,11 +291,40 @@ let test_nested_scopes () =
 
   print_endline "✓ Nested scopes test passed"
 
+let test_many_scopes () =
+  let root =
+    "\n\
+    \  struct Tree {\n\
+    \    left: Tree,\n\
+    \    right: Tree,\n\
+    \    val: int,\n\n\
+    \    co iterate(root: Tree) int {\n\
+    \      yield(root.val);\n\
+    \      if (root.left) root.left.iterate();\n\
+    \      if (root.right) root.right.iterate();\n\
+    \    }\n\
+    \  }\n\n\
+    \  fn main() void {\n\
+     let t: Tree = new Tree{val : 10, left : new Tree{val:20, left:null, \
+     right:null}, right : new Tree{val:30, left:new Tree{val:40, left:null, \
+     right:null}, right : null}};\n\
+    \    let iter: co int = create(t.iterate());\n\
+    \    for (x : iter) {\n\
+    \      print_int(x);\n\
+    \      }\n\
+    \    }\n\
+    \  " |> Parser.parse_root
+  in
+  let symtab = build_symbol_table root in
+  print_endline @@ dump symtab;
+  ()
+
 let run_tests () =
   print_endline "Running symbol table tests...";
   test_basic_let ();
   test_function_declaration ();
   test_nested_scopes ();
+  test_many_scopes ();
   print_endline "All tests passed! ✓"
 
 let () = run_tests ()
