@@ -49,15 +49,15 @@ let rec build_stmt (symtab : t) (stmt : stmt) : t =
   | WhileLoop x -> build_stmt (build_expr symtab x.condition) x.body
   | IfStmt x ->
       let symtab = build_expr symtab x.condition in
-      let symtab_if_true = enter_scope symtab BlockScope in
+      let symtab_if_true = symtab in
       let symtab_if_true = build_stmt symtab_if_true x.if_true in
-      let symtab_if_true_exit = exit_scope symtab_if_true in
+      let symtab_if_true_exit = symtab_if_true in
 
       Option.fold ~none:symtab_if_true_exit
         ~some:(fun if_false_stmt ->
-          let symtab_if_false = enter_scope symtab_if_true_exit BlockScope in
+          let symtab_if_false = symtab_if_true_exit in
           let symtab_if_false = build_stmt symtab_if_false if_false_stmt in
-          exit_scope symtab_if_false)
+          symtab_if_false)
         x.if_false
   | IfResumeStmt x ->
       let symtab_after_coroutine_expr = build_expr symtab x.coroutine in

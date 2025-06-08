@@ -4,6 +4,7 @@ open Alcotest
 let compile src =
   let root = Parser.parse_root src in
   let symtab = SymbolTableBuilder.build_symbol_table root in
+  print_endline @@ SymbolTable.dump symtab;
   let r = Codegen.codegen src root symtab in
   r
 
@@ -27,7 +28,7 @@ let while_loop () =
       sum = sum + i;
       i = i + 1;
     }
-    print_int(sum);
+    print(sum);
     return;
   }
   |}
@@ -44,7 +45,7 @@ let fib_test () =
     } 
 
     fn main() void {
-      print_int(fib(10));
+      print(fib(10));
       return;
     }
     |}
@@ -64,7 +65,7 @@ let range_test () =
 
   fn main() void {
     for (x: create(range, 5, 10)) {
-      print_int(x);
+      print(x);
     }
   }
   |}
@@ -77,6 +78,47 @@ let range_test () =
 
   check string "Range(5, 10)" "5\n6\n7\n8\n9\n" (interpret r 1000)
 
+let quicksort () =
+  let src =
+    {|
+  fn partition(arr: [int], start: int, end: int) int {
+    let i: int = start;
+    let j: int = start + 1;
+    while (j < end) {
+      if (arr[j] < arr[i]) {
+        let a: int = arr[i];
+        let b: int = arr[i + 1];
+        let c: int = arr[j];
+        arr[i] = c;
+        arr[j] = b;
+        arr[i + 1] = a;
+        i = i + 1;
+      }
+      j = j + 1;
+    }
+    return i;
+  }
+  fn qsort(arr: [int], start: int, end: int) void {
+    if (start + 1 < end) {
+      let mid: int = partition(arr, start, end);
+      qsort(arr, start, mid);
+      qsort(arr, mid + 1, end);
+    }
+  }
+  fn main() void {
+    let arr: [int] = [7, 4, 8, 1, 5, 9, 2, 0, 6, 3];
+    qsort(arr, 0, 10);
+    print(arr);
+  }
+  |}
+  in
+  let r = compile src in
+  Array.iteri
+    (fun i (cmd : Runtime.command) ->
+      print_endline @@ Runtime.string_of_cmd i cmd.cmd)
+    r.code;
+  check string "Range(5, 10)" "[0,1,2,3,4,5,6,7,8,9]\n" (interpret r 1000)
+
 let () =
   run "Codegen"
     [
@@ -85,5 +127,6 @@ let () =
           ("fib", `Quick, fib_test);
           ("sum", `Quick, while_loop);
           ("range", `Quick, range_test);
+          ("qsort", `Quick, quicksort);
         ] );
     ]

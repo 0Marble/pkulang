@@ -30,7 +30,7 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
 
   SymbolTable.add_symbol symtab
     {
-      name = "print_int";
+      name = "print";
       kind = Function;
       node_idx = 10;
       (* node indices start with 100*)
@@ -96,9 +96,16 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     | Ast.Block x ->
         let prev_scope = !cur_scope in
         (*TODO: how do I find this scope? *)
-        cur_scope :=
-          SymbolTable.find_child_scope_by_kind !cur_scope BlockScope
-          |> Option.get;
+        let blocks =
+          List.filter
+            (fun (x : SymbolTable.scope) -> x.kind == BlockScope)
+            !(!cur_scope.children)
+        in
+        if List.length blocks > 1 then
+          failwith "Todo: No way to distinguish between blocks"
+        else ();
+
+        cur_scope := List.hd blocks;
         List.iter (fun s -> codegen_stmt s registers) x.stmts;
         cur_scope := prev_scope
     | Ast.LetStmt x ->
@@ -208,32 +215,64 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
       : expr_value =
     match e with
     | Ast.BinExpr x -> (
-        let lhs = codegen_expr x.lhs registers |> expr_to_operand in
-        let rhs = codegen_expr x.rhs registers |> expr_to_operand in
         match x.op.kind with
         | Tokenizer.TokAdd ->
+            let lhs = codegen_expr x.lhs registers |> expr_to_operand in
+            let rhs = codegen_expr x.rhs registers |> expr_to_operand in
             let reg = temp_register registers in
             emit { cmd = Add (reg, lhs, rhs); loc = x.loc };
             Operand (Location reg)
         | Tokenizer.TokSub ->
+            let lhs = codegen_expr x.lhs registers |> expr_to_operand in
+            let rhs = codegen_expr x.rhs registers |> expr_to_operand in
             let reg = temp_register registers in
             emit { cmd = Sub (reg, lhs, rhs); loc = x.loc };
             Operand (Location reg)
         | Tokenizer.TokLt ->
+            let lhs = codegen_expr x.lhs registers |> expr_to_operand in
+            let rhs = codegen_expr x.rhs registers |> expr_to_operand in
             let reg = temp_register registers in
             emit { cmd = Lt (reg, lhs, rhs); loc = x.loc };
             Operand (Location reg)
-        | Tokenizer.TokAssign ->
-            let lhs =
-              match lhs with
-              | Location lhs -> lhs
-              | _ ->
-                  Error.fail_at_spot
-                    "Can not assign to a value with no location" src x.loc
-                    (Error.Error Unknown)
-            in
-            emit { cmd = Assign (lhs, rhs); loc = x.loc };
-            Operand (Location lhs)
+        | Tokenizer.TokAssign -> (
+            let rhs = codegen_expr x.rhs registers |> expr_to_operand in
+            match x.lhs with
+            | IndexExpr lhs ->
+                let arr = codegen_expr lhs.arr registers |> expr_to_operand in
+                let arr =
+                  match arr with
+                  | Location arr -> arr
+                  | _ ->
+                      Error.fail_at_spot
+                        "Can not assign to a value with no location" src x.loc
+                        (Error.Error Unknown)
+                in
+                if List.length lhs.idx <> 1 then
+                  failwith "Todo: multidimensional assign"
+                else ();
+                let idx =
+                  codegen_expr (List.hd lhs.idx) registers |> expr_to_operand
+                in
+                emit { cmd = IndexSet (arr, idx, rhs); loc = x.loc };
+                Operand rhs
+            | _ ->
+                let lhs = codegen_expr x.lhs registers |> expr_to_operand in
+                let lhs =
+                  match lhs with
+                  | Location lhs -> lhs
+                  | _ ->
+                      Error.fail_at_spot
+                        "Can not assign to a value with no location" src x.loc
+                        (Error.Error Unknown)
+                in
+                emit { cmd = Assign (lhs, rhs); loc = x.loc };
+                Operand rhs)
+        | Tokenizer.TokEq ->
+            let lhs = codegen_expr x.lhs registers |> expr_to_operand in
+            let rhs = codegen_expr x.rhs registers |> expr_to_operand in
+            let reg = temp_register registers in
+            emit { cmd = Eq (reg, lhs, rhs); loc = x.loc };
+            Operand (Location reg)
         | _ -> failwith "Todo")
     | Ast.UnaryExpr _ -> failwith "Todo"
     | Ast.CallExpr x ->
@@ -248,13 +287,32 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
         in
         emit { cmd = Call (reg, Array.of_list args, fn); loc = x.loc };
         Operand (Location reg)
-    | Ast.IndexExpr _ -> failwith "Todo"
+    | Ast.IndexExpr x ->
+        let arr = codegen_expr x.arr registers |> expr_to_operand in
+        let reg =
+          List.fold_left
+            (fun (arr : Runtime.operand) idx ->
+              let res = temp_register registers in
+              let idx = codegen_expr idx registers |> expr_to_operand in
+              emit { cmd = IndexGet (res, arr, idx); loc = x.loc };
+              Location res)
+            arr x.idx
+        in
+        Operand reg
     | Ast.DotExpr _ -> failwith "Todo"
     | Ast.VarExpr x -> (
         let info =
           match SymbolTable.find_in_scope !cur_scope x.name with
           | Some info -> info
           | None ->
+              let rec foo s =
+                let buf = Buffer.create 128 in
+                SymbolTable.dump_scope buf 0 s;
+                Printf.printf "%s\n=========\n" @@ Buffer.contents buf;
+                match s.parent with Some s -> foo s | _ -> ()
+              in
+              foo !cur_scope;
+
               Error.fail_at_spot "Undefined variable" src x.loc
                 (Error.Error Unknown)
         in
@@ -272,8 +330,17 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
         | _ -> failwith "Todo")
     | Ast.NumExpr x -> Operand (Number x.num)
     | Ast.StringExpr _ -> failwith "Todo"
-    | Ast.ArrayLiteral _ -> failwith "Todo"
-    | Ast.NullLiteral _ -> failwith "Todo"
+    | Ast.ArrayLiteral x ->
+        let reg = temp_register registers in
+        emit { cmd = New reg; loc = x.loc };
+        emit { cmd = Resize (reg, Number (List.length x.elems)); loc = x.loc };
+        List.iteri
+          (fun i y ->
+            let y_reg = codegen_expr y registers |> expr_to_operand in
+            emit { cmd = IndexSet (reg, Number i, y_reg); loc = x.loc })
+          x.elems;
+        Operand (Location reg)
+    | Ast.NullLiteral _ -> Operand Null
     | Ast.NewExpr _ -> failwith "Todo"
     | Ast.CreateExpr x ->
         let reg = temp_register registers in
