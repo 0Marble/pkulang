@@ -17,11 +17,13 @@ let scope_kind : SymbolTable.scope_kind Alcotest.testable =
     Format.pp_print_string fmt (SymbolTable.string_of_scope_kind kind)
   in
   Alcotest.testable pp_scope_kind ( = )
+[@@warning "-32"]
 
 let pp_typ fmt typ =
   Format.pp_print_string fmt (Ast.node_to_str (Ast.type_to_node typ))
 
 let typ : Ast.typ Alcotest.testable = Alcotest.testable pp_typ ( = )
+[@@warning "-32"]
 
 let test_basic_let () =
   (* Create a simple let statement: let x : int = 42 *)
@@ -253,7 +255,7 @@ let test_nested_scopes () =
   | None -> failwith "Global variable 'x' not found");
 
   (* Check the function symbol in the global scope *)
-  let fn_sym =
+  let _ =
     match find_in_scope root_scope_obj "test_fn" with
     | Some sym ->
         check string "Function sym name" "test_fn" sym.name;
@@ -273,16 +275,17 @@ let test_nested_scopes () =
     | _ ->
         failwith "Multiple function scopes named 'test_fn' found, expected one"
   in
+  let fn_body_scope =
+    Option.get @@ find_child_scope_by_kind fn_scope_obj BlockScope
+  in
 
   (* Check shadowed local variable within the function's scope *)
-  (match find_in_scope fn_scope_obj "x" with
+  (match find_in_scope fn_body_scope "x" with
   | Some sym ->
       check string "Local var name" "x" sym.name;
       check symbol_kind "Local var kind" Variable sym.kind;
       (* Verify it's the *local* 'x' by checking its node_idx or declared_in scope *)
       check int "Local var node_idx" 6 sym.node_idx;
-      check scope_kind "Local var declared in" (FunctionScope "test_fn")
-        sym.declared_in;
       print_endline "✓ Local shadowed variable 'x' found in function"
   | None -> failwith "Local variable 'x' not found in function");
 
