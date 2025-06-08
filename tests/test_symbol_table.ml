@@ -291,32 +291,58 @@ let test_nested_scopes () =
 
   print_endline "✓ Nested scopes test passed"
 
-let test_many_scopes () =
+let test_methods () =
   let root =
-    "\n\
-    \  struct Tree {\n\
-    \    left: Tree,\n\
-    \    right: Tree,\n\
-    \    val: int,\n\n\
-    \    co iterate(root: Tree) int {\n\
-    \      yield(root.val);\n\
-    \      if (root.left) root.left.iterate();\n\
-    \      if (root.right) root.right.iterate();\n\
+    "struct Foo {\n\
+    \    fn bar(foo: Foo) void {}\n\
     \    }\n\
-    \  }\n\n\
-    \  fn main() void {\n\
-     let t: Tree = new Tree{val : 10, left : new Tree{val:20, left:null, \
-     right:null}, right : new Tree{val:30, left:new Tree{val:40, left:null, \
-     right:null}, right : null}};\n\
-    \    let iter: co int = create(t.iterate());\n\
-    \    for (x : iter) {\n\
-    \      print_int(x);\n\
+    \    fn bar(x: Foo) void {} \n\
+    \    fn main() void {\n\
+    \  let foo: Foo = new Foo{};\n\
+    \  f.bar();\n\
     \      }\n\
-    \    }\n\
-    \  " |> Parser.parse_root
+    \    " |> Parser.parse_root
   in
   let symtab = build_symbol_table root in
-  print_endline @@ dump symtab;
+  let main_decl =
+    find_child_scope_by_kind symtab.root (FunctionScope "main") |> Option.get
+  in
+  let main_body = find_child_scope_by_kind main_decl BlockScope |> Option.get in
+  let foo_var = find_in_scope main_body "foo" |> Option.get in
+  let foo_type =
+    match foo_var.ty with
+    | Some (NamedType typ) ->
+        (* not quite right: what if there is a struct Foo above the Foo in question? *)
+        find_struct_scope symtab.root typ.name |> Option.get
+    | None -> failwith "didnt provide a type for foo"
+    | _ -> failwith "foo is not of a named type"
+  in
+  let bar_method = find_in_scope foo_type "bar" |> Option.get in
+  let bar_method_ast_node =
+    List.find_map
+      (fun (s : top_stmt) ->
+        match s with
+        | StructDecl s ->
+            List.find_map
+              (fun (d : decl) ->
+                match d with
+                | FnDecl f -> if f.name = "bar" then Some f else None
+                | _ -> None)
+              s.decls
+        | _ -> None)
+      root.stmts
+    |> Option.get
+  in
+  check int "bar() method node" bar_method_ast_node.node_idx bar_method.node_idx;
+  ()
+
+let test_local_structs () =
+  let root =
+    "struct Foo {} fn main() void {struct Foo {} let foo: Foo = new Foo{};}"
+    |> Parser.parse_root
+  in
+  let _ = build_symbol_table root in
+  let _ = failwith "No easy way to get to the inner Foo?" in
   ()
 
 let run_tests () =
@@ -324,7 +350,8 @@ let run_tests () =
   test_basic_let ();
   test_function_declaration ();
   test_nested_scopes ();
-  test_many_scopes ();
+  test_methods ();
+  test_local_structs ();
   print_endline "All tests passed! ✓"
 
 let () = run_tests ()
