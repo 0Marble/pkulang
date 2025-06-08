@@ -101,7 +101,7 @@ let ret (s : stack) v =
   let callee = s.top in
   match callee.caller with
   | Some caller ->
-      let s = { s with top = caller } in
+      let s = { s with top = { caller with ip = caller.ip + 1 } } in
       store s caller.result v;
       s
   | None -> (

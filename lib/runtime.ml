@@ -364,7 +364,8 @@ let step r =
         { r with stack = Stack.call r.stack dest args fn }
     | Ret v ->
         let v = op_to_val r v in
-        next { r with stack = Stack.ret r.stack v }
+        let return_stack = Stack.ret r.stack v in
+        { r with stack = return_stack }
     | Builtin (args, "print") ->
         let s, _ =
           Array.fold_left

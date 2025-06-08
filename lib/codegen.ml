@@ -69,6 +69,7 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     let locals_cnt = Hashtbl.length registers in
     cmds.(backpatch_locals_cnt) <- { cmd = Alloca locals_cnt; loc = f.loc };
     cur_scope := prev_scope;
+    emit { cmd = Ret Null; loc = f.loc };
     ()
   and codegen_co (f : Ast.co_decl) =
     let registers = Hashtbl.create 64 in
@@ -84,6 +85,7 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     let locals_cnt = Hashtbl.length registers in
     cmds.(backpatch_locals_cnt) <- { cmd = Alloca locals_cnt; loc = f.loc };
     cur_scope := prev_scope;
+    emit { cmd = Ret Null; loc = f.loc };
     ()
   and codegen_arg i (a : Ast.argument)
       (registers : (int, Stack.location) Hashtbl.t) =
@@ -150,9 +152,7 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     | Ast.AliasStmt _ -> failwith "Todo"
     | Ast.IfResumeStmt x ->
         let parent_scope = !cur_scope in
-        let inner_scopes =
-          SymbolTable.collect_scopes_by_kind !cur_scope BlockScope []
-        in
+        let inner_scopes = !(parent_scope.children) |> List.rev in
         let if_ok_scope = List.hd inner_scopes in
         cur_scope := if_ok_scope;
         let coro = codegen_expr x.coroutine registers |> expr_to_operand in
@@ -167,8 +167,8 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
         in
         let backpatch_if_bad = !ptr in
         emit { cmd = Trap; loc = Location.Spot 0 };
-
         codegen_stmt x.if_ok registers;
+
         (match x.if_bad with
         | Some if_bad ->
             let if_bad_scope = List.nth inner_scopes 1 in
