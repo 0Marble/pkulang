@@ -63,14 +63,8 @@ let range_test () =
   }
 
   fn main() void {
-    let coro: co int = create(range, 5, 10);
-    let running: int = 1;
-    while (running) {
-      if resume (x: coro) {
-        print_int(x);
-      } else {
-        running = 0;
-      }
+    for (x: create(range, 5, 10)) {
+      print_int(x);
     }
   }
   |}

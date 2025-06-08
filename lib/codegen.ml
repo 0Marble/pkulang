@@ -107,7 +107,20 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
         let value = codegen_expr x.value registers in
         emit
           { cmd = Assign (Register reg, value |> expr_to_operand); loc = x.loc }
-    | Ast.ForLoop _ -> failwith "Todo"
+    | Ast.ForLoop x ->
+        let iter = codegen_expr x.iterator registers |> expr_to_operand in
+        let iter_var_reg = Hashtbl.length registers in
+        Hashtbl.add registers x.node_idx (Register iter_var_reg);
+        let backpatch_goto_end = !ptr in
+        emit { cmd = Trap; loc = Location.Spot 0 };
+
+        codegen_stmt x.body registers;
+        emit { cmd = Goto (Static backpatch_goto_end); loc = x.loc };
+        cmds.(backpatch_goto_end) <-
+          {
+            cmd = Resume (Register iter_var_reg, iter, Static !ptr);
+            loc = x.loc;
+          }
     | Ast.WhileLoop x ->
         let start_addr = !ptr in
         let cond = codegen_expr x.condition registers |> expr_to_operand in
