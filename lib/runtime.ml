@@ -10,6 +10,7 @@ type command_kind =
   | Trace of int
   | Add of (Stack.location * operand * operand)
   | Sub of (Stack.location * operand * operand)
+  | Lt of (Stack.location * operand * operand)
   | Assign of (Stack.location * operand)
   | Goto of jump_target
   | GotoIfZero of (operand * jump_target)
@@ -106,6 +107,9 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
           (string_of_operand lhs) (string_of_operand rhs)
     | Sub (dest, lhs, rhs) ->
         Printf.sprintf "Sub %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Lt (dest, lhs, rhs) ->
+        Printf.sprintf "Lt %s %s %s" (string_of_dest dest)
           (string_of_operand lhs) (string_of_operand rhs)
     | Assign (dest, v) ->
         Printf.sprintf "Assign %s %s" (string_of_dest dest)
@@ -342,6 +346,14 @@ let step r =
         Stack.store r.stack dest
           (Value.Number
              ((op_to_val r lhs |> val_to_int) - (op_to_val r rhs |> val_to_int)));
+        next r
+    | Lt (dest, lhs, rhs) ->
+        let res =
+          if op_to_val r lhs |> val_to_int < (op_to_val r rhs |> val_to_int)
+          then 1
+          else 0
+        in
+        Stack.store r.stack dest (Value.Number res);
         next r
     | Assign (dest, src) ->
         Stack.store r.stack dest (op_to_val r src);

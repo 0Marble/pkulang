@@ -16,4 +16,5 @@
   stack
   lalr
   symbolTable
+  codegen
   symbolTableBuilder))
