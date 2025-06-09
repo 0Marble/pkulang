@@ -119,6 +119,68 @@ let quicksort () =
     r.code;
   check string "Range(5, 10)" "[0,1,2,3,4,5,6,7,8,9]\n" (interpret r 1000)
 
+let nested_fn_decl () =
+  let src =
+    {|
+fn array_iter(arr: [int]) co int {
+	co iter_impl(arr: [int]) int {
+		let i: int = 0;
+		while (i < len(arr)) {
+			yield arr[i];
+			i = i + 1;
+		}
+	}
+	return create(iter_impl, arr);
+}
+
+fn main() void {
+	let arr: [int] = [0,1,2,3,4,5,6,7,8,9];
+	for (x : array_iter(arr)) {
+		print(x);
+	}
+}
+  |}
+  in
+  let r = compile src in
+  Array.iteri
+    (fun i (cmd : Runtime.command) ->
+      print_endline @@ Runtime.string_of_cmd i cmd.cmd)
+    r.code;
+  check string "array_iter" "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n" (interpret r 1000)
+
+let stackful () =
+  let src =
+    {|
+co bar() int {
+	yield 10;
+}
+
+co foo() int {
+	yield 0;
+	bar();
+	yield 20;
+}
+
+fn main() void {
+	let coro: co int = create(foo);
+	while(1) {
+		if resume(x: coro) {
+			print(x);
+		} else {
+			print(30);
+			return;
+		}
+	}
+}
+  |}
+  in
+  let r = compile src in
+  Array.iteri
+    (fun i (cmd : Runtime.command) ->
+      print_endline @@ Runtime.string_of_cmd i cmd.cmd)
+    r.code;
+  check string "Stackfullness" "0\n10\n20\n30\n" (interpret r 1000)
+
 let () =
   run "Codegen"
     [
@@ -128,5 +190,7 @@ let () =
           ("sum", `Quick, while_loop);
           ("range", `Quick, range_test);
           ("qsort", `Quick, quicksort);
+          ("nested_fn_decl", `Quick, nested_fn_decl);
+          ("stackful", `Quick, stackful);
         ] );
     ]

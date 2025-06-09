@@ -25,7 +25,7 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     match e with Operand e -> e | _ -> failwith "not an operand"
   in
   let expr_to_address (e : expr_value) : Runtime.jump_target =
-    match e with Address e -> e | _ -> failwith "not an operand"
+    match e with Address e -> e | _ -> failwith "not an address"
   in
 
   SymbolTable.add_symbol symtab
@@ -46,6 +46,20 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
     };
   emit { cmd = Ret Null; loc = Location.Spot 0 };
   Hashtbl.add function_addresses 10 print_loc;
+  SymbolTable.add_symbol symtab
+    {
+      name = "len";
+      kind = Function;
+      node_idx = 20;
+      ty = None;
+      declared_in = GlobalScope;
+      loc = None;
+    };
+  let len_loc = !ptr in
+  emit { cmd = Alloca 1; loc = Location.Spot 0 };
+  emit { cmd = Size (Register 0, Location (Argument 0)); loc = Location.Spot 0 };
+  emit { cmd = Ret (Location (Register 0)); loc = Location.Spot 0 };
+  Hashtbl.add function_addresses 20 len_loc;
 
   let rec codegen_root (root : Ast.root) = List.iter codegen_top_stmt root.stmts
   and codegen_top_stmt (stmt : Ast.top_stmt) =
@@ -168,7 +182,11 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
         ()
     | Ast.FnDecl _ -> failwith "Todo"
     | Ast.StructDecl _ -> failwith "Todo"
-    | Ast.CoDecl _ -> failwith "Todo"
+    | Ast.CoDecl x ->
+        let backpatch = !ptr in
+        emit { cmd = Trap; loc = Location.Spot 0 };
+        codegen_co x;
+        cmds.(backpatch) <- { cmd = Goto (Static !ptr); loc = x.loc }
     | Ast.AliasStmt _ -> failwith "Todo"
     | Ast.IfResumeStmt x ->
         let parent_scope = !cur_scope in
@@ -366,4 +384,3 @@ let codegen (src : string) (root : Ast.root) (symtab : SymbolTable.t) :
   emit { cmd = Call (Void, [||], Static main_fn); loc = Location.Spot 0 };
   emit { cmd = Halt; loc = Location.Spot 0 };
   Runtime.create src (Array.sub cmds 0 (!ptr + 1)) start
-
