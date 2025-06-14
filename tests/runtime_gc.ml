@@ -63,7 +63,7 @@ let create_1_page_of_garbage () =
       ]
       100000
   in
-  check string "The last object" "1\n" r.stdout;
+  check string "The last object" "1" r.stdout;
   check int "Memory used" 1 r.heap.used_size;
   check int "Max address" (1024 + 4096) r.heap.max_address
 
@@ -219,7 +219,7 @@ let reassign () =
       ]
       100
   in
-  check string "output" "0, {foo: 10, bar: 20}\n" r.stdout;
+  check string "output" "0, {foo: 10, bar: 20}" r.stdout;
   check int "Memory used" 1 r.heap.used_size;
   check int "Max address" (1024 + 1) r.heap.max_address
 

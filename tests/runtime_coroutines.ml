@@ -18,7 +18,7 @@ let interpret cmds n =
   (complete r n).stdout
 
 let simple () =
-  check string "simple coroutine" "10\n"
+  check string "simple coroutine" "10"
     (interpret
        [
          Alloca 1;
@@ -38,11 +38,11 @@ let multiple_yield () =
          Alloca 2;
          Create (Register 0, [||], Relative 8);
          Resume (Register 1, Location (Register 0), Static 1000);
-         Builtin ([| Location (Register 1) |], "print");
+         Builtin ([| Location (Register 1) |], "println");
          Resume (Register 1, Location (Register 0), Static 1000);
-         Builtin ([| Location (Register 1) |], "print");
+         Builtin ([| Location (Register 1) |], "println");
          Resume (Register 1, Location (Register 0), Static 1000);
-         Builtin ([| Location (Register 1) |], "print");
+         Builtin ([| Location (Register 1) |], "println");
          Halt;
          Yield (Number 10);
          Yield (Number 20);
@@ -57,11 +57,11 @@ let ordering () =
        [
          Alloca 1;
          Create (Register 0, [||], Relative 5);
-         Builtin ([| Number 10 |], "print");
+         Builtin ([| Number 10 |], "println");
          Resume (Void, Location (Register 0), Static 1000);
-         Builtin ([| Number 30 |], "print");
+         Builtin ([| Number 30 |], "println");
          Halt;
-         Builtin ([| Number 20 |], "print");
+         Builtin ([| Number 20 |], "println");
          Yield Null;
          Trap;
        ]
@@ -74,10 +74,10 @@ let nested () =
          Alloca 2;
          Create (Register 0, [||], Relative 7);
          Resume (Register 1, Location (Register 0), Static 1000);
-         Builtin ([| Location (Register 1) |], "print");
+         Builtin ([| Location (Register 1) |], "println");
          Resume (Register 1, Location (Register 0), Static 1000);
-         Builtin ([| Location (Register 1) |], "print");
-         Builtin ([| Number 30 |], "print");
+         Builtin ([| Location (Register 1) |], "println");
+         Builtin ([| Number 30 |], "println");
          Halt;
          Yield (Number 10);
          Call (Void, [||], Relative 3);
@@ -98,7 +98,7 @@ let range () =
          Create (Register 0, [| Number 0; Number 10 |], Relative 6);
          Resume (Register 1, Location (Register 0), Static 1000);
          GotoIfNeg (Location (Register 1), Relative 3);
-         Builtin ([| Location (Register 1) |], "print");
+         Builtin ([| Location (Register 1) |], "println");
          Goto (Relative (-3));
          Halt;
          Alloca 2;

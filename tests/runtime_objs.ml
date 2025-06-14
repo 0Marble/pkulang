@@ -18,7 +18,7 @@ let interpret cmds n =
   (complete r n).stdout
 
 let print () =
-  check string "Print object" "{foo: 10, bar: 20}\n"
+  check string "Print object" "{foo: 10, bar: 20}"
     (interpret
        [
          Alloca 2;
@@ -33,7 +33,7 @@ let print () =
        100)
 
 let nested () =
-  check string "Nested" "{foo: {baz: 20}, bar: 10}\n"
+  check string "Nested" "{foo: {baz: 20}, bar: 10}"
     (interpret
        [
          Alloca 2;

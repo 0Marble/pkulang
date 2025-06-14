@@ -20,9 +20,9 @@ let interpret cmds n =
 let nothing () = check string "Empty" "" (interpret [ Halt ] 10)
 
 let print () =
-  check string "Print int" "10\n"
+  check string "Print int" "10"
     (interpret [ Builtin ([| Number 10 |], "print"); Halt ] 10);
-  check string "Print int local" "10\n"
+  check string "Print int local" "10"
     (interpret
        [
          Alloca 1;
@@ -33,7 +33,7 @@ let print () =
        10)
 
 let null () =
-  check string "null" "10\n"
+  check string "null" "10"
     (interpret
        [
          GotoIfNull (Null, Static 2);
@@ -44,7 +44,7 @@ let null () =
        100)
 
 let call () =
-  check string "simple call" "10\n"
+  check string "simple call" "10"
     (interpret
        [
          Alloca 1;
@@ -56,7 +56,7 @@ let call () =
          Ret (Location (Register 0));
        ]
        100);
-  check string "nested call" "20\n"
+  check string "nested call" "20"
     (interpret
        [
          Alloca 1;
@@ -74,11 +74,11 @@ let call () =
        100)
 
 let goto () =
-  check string "goto" "10\n"
+  check string "goto" "10"
     (interpret
        [ Goto (Static 2); Trap; Builtin ([| Number 10 |], "print"); Halt ]
        10);
-  check string "goto if zero" "10\n"
+  check string "goto if zero" "10"
     (interpret
        [
          GotoIfZero (Number 0, Static 2);
@@ -87,7 +87,7 @@ let goto () =
          Halt;
        ]
        10);
-  check string "goto if negative" "10\n"
+  check string "goto if negative" "10"
     (interpret
        [
          GotoIfNeg (Number (-1), Static 2);
@@ -96,7 +96,7 @@ let goto () =
          Halt;
        ]
        10);
-  check string "goto if null" "10\n"
+  check string "goto if null" "10"
     (interpret
        [
          GotoIfNull (Null, Static 2);
@@ -105,7 +105,7 @@ let goto () =
          Halt;
        ]
        10);
-  check string "goto relative" "10\n"
+  check string "goto relative" "10"
     (interpret
        [
          Nop;
@@ -116,7 +116,7 @@ let goto () =
          Halt;
        ]
        10);
-  check string "goto dynamic" "10\n"
+  check string "goto dynamic" "10"
     (interpret
        [
          Alloca 1;
@@ -129,7 +129,7 @@ let goto () =
        10)
 
 let fib () =
-  check string "Fib(20)" "6765\n"
+  check string "Fib(20)" "6765"
     (interpret
        [
          (* 0: main *)

@@ -356,7 +356,7 @@ let step r =
     | Ret v ->
         let v = op_to_val r v in
         next { r with stack = Stack.ret r.stack v }
-    | Builtin (args, "print") ->
+    | Builtin (args, x) when x = "print" || x = "println" ->
         let s, _ =
           Array.fold_left
             (fun (acc, i) op ->
@@ -365,8 +365,12 @@ let step r =
               else (acc ^ s ^ ", ", i + 1))
             ("", 0) args
         in
-        print_endline s;
-        next { r with stdout = r.stdout ^ s ^ "\n" }
+        if x = "print" then (
+          prerr_string s;
+          next { r with stdout = r.stdout ^ s })
+        else (
+          prerr_endline s;
+          next { r with stdout = r.stdout ^ s ^ "\n" })
     | Builtin (_, _) -> failwith "Unknown builtin"
     | Goto tgt ->
         let ip = get_ip r tgt in

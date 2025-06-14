@@ -18,7 +18,7 @@ let interpret cmds n =
   (complete r n).stdout
 
 let array_print () =
-  check string "print empty" "[]\n"
+  check string "print empty" "[]"
     (interpret
        [
          Alloca 1;
@@ -28,7 +28,7 @@ let array_print () =
          Halt;
        ]
        10);
-  check string "print one invalid" "[?]\n"
+  check string "print one invalid" "[?]"
     (interpret
        [
          Alloca 1;
@@ -38,7 +38,7 @@ let array_print () =
          Halt;
        ]
        10);
-  check string "print one" "[10]\n"
+  check string "print one" "[10]"
     (interpret
        [
          Alloca 2;
@@ -51,7 +51,7 @@ let array_print () =
          Halt;
        ]
        10);
-  check string "print many" "[10,20,30]\n"
+  check string "print many" "[10,20,30]"
     (interpret
        [
          Alloca 2;
@@ -72,7 +72,7 @@ let array_print () =
        20)
 
 let string_object () =
-  check string "Print a string" "foo\n"
+  check string "Print a string" "foo"
     (interpret
        [
          Alloca 1;
@@ -82,7 +82,7 @@ let string_object () =
          Halt;
        ]
        10);
-  check string "Modify string" "foO\n"
+  check string "Modify string" "foO"
     (interpret
        [
          Alloca 1;
@@ -93,8 +93,18 @@ let string_object () =
          Halt;
        ]
        10);
+  check string "Manual println" "foo\n"
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         StringLiteral (Register 0, "foo\n");
+         Builtin ([| Location (Register 0) |], "print");
+         Halt;
+       ]
+       10);
   check string "Get string index"
-    ((int_of_char 'f' |> string_of_int) ^ "\n")
+    (int_of_char 'f' |> string_of_int)
     (interpret
        [
          Alloca 1;
@@ -105,7 +115,7 @@ let string_object () =
          Halt;
        ]
        10);
-  check string "Resize string" "0123456789\n"
+  check string "Resize string" "0123456789"
     (interpret
        [
          Alloca 1;
@@ -125,7 +135,7 @@ let string_object () =
   ()
 
 let length () =
-  check string "length" "10\n"
+  check string "length" "10"
     (interpret
        [
          Alloca 1;
@@ -138,7 +148,7 @@ let length () =
        10)
 
 let inline_ints () =
-  check string "array of ints" "[1,2,3]\n"
+  check string "array of ints" "[1,2,3]"
     (interpret
        [
          Alloca 1;
@@ -153,7 +163,7 @@ let inline_ints () =
        100)
 
 let range () =
-  check string "range(0, 10)" "[0,1,2,3,4,5,6,7,8,9]\n"
+  check string "range(0, 10)" "[0,1,2,3,4,5,6,7,8,9]"
     (interpret
        [
          (* 0 fn main() void *)
@@ -184,7 +194,7 @@ let range () =
        10000)
 
 let sort () =
-  check string "Sort" "[3,5,6,4,0,7,8,9,1,2]\n[0,1,2,3,4,5,6,7,8,9]\n"
+  check string "Sort" "[3,5,6,4,0,7,8,9,1,2][0,1,2,3,4,5,6,7,8,9]"
     (interpret
        [
          (* 0: main() *)
