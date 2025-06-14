@@ -5,6 +5,7 @@ type obj =
   | HeapInvalid
   | FreeList of int
   | HeapNumber of int
+  | HeapString of int array
   | HeapArray of Value.value array
   | HeapObject of { fields : Value.value StringMap.t; order : string list }
   | Coroutine of Stack.stack
@@ -64,6 +65,14 @@ let dealloc h ptr =
   h.memory.(ptr.idx) <- FreeList h.free;
   { h with free = ptr.idx; used_size = h.used_size - 1 }
 
+let load_string_literal h ptr lit =
+  let ptr = ptr_valid h ptr in
+  h.memory.(ptr.idx) <-
+    HeapString
+      (String.fold_left
+         (fun acc c -> Array.append acc [| int_of_char c |])
+         [||] lit)
+
 let store_coroutine h ptr f =
   let ptr = ptr_valid h ptr in
   h.memory.(ptr.idx) <- Coroutine f
@@ -84,11 +93,21 @@ let resize h ptr new_len =
       let old_len = Array.length arr in
       if old_len == new_len then h
       else if old_len < new_len then (
-        let added = Array.make new_len Value.null in
+        let added = Array.make (new_len - old_len) Value.null in
         h.memory.(ptr.idx) <- HeapArray (Array.append arr added);
         h)
       else (
         h.memory.(ptr.idx) <- HeapArray (Array.sub arr 0 new_len);
+        h)
+  | HeapString buf ->
+      let old_len = Array.length buf in
+      if old_len == new_len then h
+      else if old_len < new_len then (
+        let added = Array.make (new_len - old_len) 0 in
+        h.memory.(ptr.idx) <- HeapString (Array.append buf added);
+        h)
+      else (
+        h.memory.(ptr.idx) <- HeapString (Array.sub buf 0 new_len);
         h)
   | _ -> failwith "Not an array"
 
@@ -121,12 +140,19 @@ let index_set h ptr idx x =
   | HeapArray arr ->
       arr.(idx) <- x;
       h
+  | HeapString buf ->
+      let c =
+        match x with Number c -> c | Pointer _ -> failwith "Expected a char"
+      in
+      buf.(idx) <- c;
+      h
   | _ -> failwith "Not an array"
 
 let index_get h ptr idx =
   let ptr = ptr_valid h ptr in
   match h.memory.(ptr.idx) with
   | HeapArray arr -> arr.(idx)
+  | HeapString buf -> Number buf.(idx)
   | _ -> failwith "Not an array"
 
 let add_field h ptr fname =
@@ -176,6 +202,10 @@ let rec string_of_obj ?(include_ptr = false) h ptr =
         | HeapInvalid -> "?"
         | FreeList x -> "!->*" ^ string_of_int x
         | HeapNumber x -> string_of_int x
+        | HeapString x ->
+            Array.fold_left
+              (fun acc c -> Printf.sprintf "%s%c" acc (char_of_int c))
+              "" x
         | HeapArray a ->
             let s, _ =
               Array.fold_left
@@ -209,7 +239,7 @@ let force_gc h active =
   let rec mark h (ptr : Value.heap_ptr) visited =
     match h.memory.(ptr.idx) with
     | FreeList _ -> failwith "Shouldnt be accessable"
-    | HeapNumber _ | HeapInvalid -> IntSet.add ptr.idx visited
+    | HeapNumber _ | HeapInvalid | HeapString _ -> IntSet.add ptr.idx visited
     | HeapArray arr ->
         let visited = IntSet.add ptr.idx visited in
         Array.fold_left

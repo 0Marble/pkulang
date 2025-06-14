@@ -71,6 +71,59 @@ let array_print () =
        ]
        20)
 
+let string_object () =
+  check string "Print a string" "foo\n"
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         StringLiteral (Register 0, "foo");
+         Builtin ([| Location (Register 0) |], "print");
+         Halt;
+       ]
+       10);
+  check string "Modify string" "foO\n"
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         StringLiteral (Register 0, "foo");
+         IndexSet (Register 0, Number 2, Number (int_of_char 'O'));
+         Builtin ([| Location (Register 0) |], "print");
+         Halt;
+       ]
+       10);
+  check string "Get string index"
+    ((int_of_char 'f' |> string_of_int) ^ "\n")
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         StringLiteral (Register 0, "foo");
+         IndexGet (Register 0, Location (Register 0), Number 0);
+         Builtin ([| Location (Register 0) |], "print");
+         Halt;
+       ]
+       10);
+  check string "Resize string" "0123456789\n"
+    (interpret
+       [
+         Alloca 1;
+         New (Register 0);
+         StringLiteral (Register 0, "0123");
+         Resize (Register 0, Number 10);
+         IndexSet (Register 0, Number 4, Number (int_of_char '4'));
+         IndexSet (Register 0, Number 5, Number (int_of_char '5'));
+         IndexSet (Register 0, Number 6, Number (int_of_char '6'));
+         IndexSet (Register 0, Number 7, Number (int_of_char '7'));
+         IndexSet (Register 0, Number 8, Number (int_of_char '8'));
+         IndexSet (Register 0, Number 9, Number (int_of_char '9'));
+         Builtin ([| Location (Register 0) |], "print");
+         Halt;
+       ]
+       20);
+  ()
+
 let length () =
   check string "length" "10\n"
     (interpret
@@ -252,6 +305,7 @@ let () =
           ("print", `Quick, array_print);
           ("length", `Quick, length);
           ("inline_ints", `Quick, inline_ints);
+          ("string_object", `Quick, string_object);
         ] );
       ("programs", [ ("range", `Quick, range); ("qsort", `Quick, sort) ]);
     ]

@@ -23,6 +23,7 @@ type command_kind =
   | Yield of operand
   | Alloca of int
   | New of Stack.location
+  | StringLiteral of Stack.location * string
   | Free of operand
   | ForceGc
   | DisableGc
@@ -141,6 +142,8 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
     | Yield op -> Printf.sprintf "Yield %s" (string_of_operand op)
     | Alloca amt -> "Alloca " ^ string_of_int amt
     | New dst -> "New " ^ string_of_dest dst
+    | StringLiteral (dst, lit) ->
+        Printf.sprintf "StringLiteral %s `%s'" (string_of_dest dst) lit
     | Free op -> "Free " ^ string_of_operand op
     | ForceGc -> "ForceGc"
     | DisableGc -> "DisableGc"
@@ -387,6 +390,10 @@ let step r =
         let h, ptr = Heap.alloc r.heap in
         Stack.store r.stack dest ptr;
         next { r with heap = h }
+    | StringLiteral (dest, lit) ->
+        let ptr = Stack.load r.stack dest in
+        Heap.load_string_literal r.heap ptr lit;
+        next r
     | Free op ->
         let ptr = op_to_val r op in
         let h = Heap.dealloc r.heap ptr in
