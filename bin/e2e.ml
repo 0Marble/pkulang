@@ -5,9 +5,15 @@ let find_test_files dir =
   let get_test files file =
     let expected_name = file ^ ".expected" in
     let stdin_name = file ^ ".stdin" in
-    let expected = Array.find_opt (fun x -> x = expected_name) files in
-    let stdin = Array.find_opt (fun x -> x = stdin_name) files in
-    (file, expected, stdin)
+    let expected =
+      Array.find_opt (fun x -> x = expected_name) files
+      |> Option.map (fun x -> Filename.concat dir x)
+    in
+    let stdin =
+      Array.find_opt (fun x -> x = stdin_name) files
+      |> Option.map (fun x -> Filename.concat dir x)
+    in
+    (Filename.concat dir file, expected, stdin)
   in
   Array.to_list files_in_dir
   |> List.filter_map (fun file ->

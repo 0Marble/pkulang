@@ -3,6 +3,6 @@ fn main() void {
 	let arr: [int] = [0,1,2,3];
 	push(arr, 4);
 	push(arr, 5);
-	print(len(arr), "\n", arr, "\n");
+	print(len(arr), "\n", arr[0], "\n", arr, "\n");
 }
 
