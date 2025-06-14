@@ -188,6 +188,9 @@ let tokenize src : token list =
     | ('a' .. 'z' | 'A' .. 'Z' | '_'), 0 ->
         step { b with start = b.loc; state = 1 }
     | ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9'), 1 -> step b
+    | '%', 0 -> step { b with state = 7 }
+    | '\n', 7 -> step { b with state = 0 }
+    | _, 7 -> step { b with state = 7 }
     | _, 1 -> (
         match Trie.get_word token_map (cur_str b) with
         | Some kw -> add_char (emit_tok kw b) c
