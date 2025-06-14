@@ -1,0 +1,16 @@
+fn main() void {
+	let x: int = 10;
+	let y: int = 20;
+
+	% {} around the branches is optional
+	% unless the branch is an if/while/... (can itself have a body)
+	if (x < 30) println("ok");
+
+	if (x < y) {
+		% print just prints all given arguments
+		println(x, " < ", y);
+	} else {
+		println(y, " < ", x);
+	}
+}
+

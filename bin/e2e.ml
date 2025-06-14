@@ -2,17 +2,23 @@ open Pkulang
 
 let find_test_files dir =
   let files_in_dir = Sys.readdir dir in
-  let get_expected files file =
+  let get_test files file =
     let expected_name = file ^ ".expected" in
-    Array.find_opt (fun x -> x = expected_name) files
+    let stdin_name = file ^ ".stdin" in
+    let expected = Array.find_opt (fun x -> x = expected_name) files in
+    let stdin = Array.find_opt (fun x -> x = stdin_name) files in
+    (file, expected, stdin)
   in
   Array.to_list files_in_dir
   |> List.filter_map (fun file ->
-         if Filename.extension file = ".expected" then None
+         if
+           Filename.extension file = ".expected"
+           || Filename.extension file = ".stdin"
+         then None
          else
-           let maybe_exp = get_expected files_in_dir file in
-           match maybe_exp with
-           | Some x -> Some (Filename.concat dir file, Filename.concat dir x)
+           let file, expected, stdin = get_test files_in_dir file in
+           match expected with
+           | Some expected -> Some (file, expected, stdin)
            | None ->
                Printf.eprintf "[WARN] no .expected file for `%s'\n" file;
                None)
@@ -29,10 +35,10 @@ let compile_and_run file : string =
 
 let () =
   Printexc.record_backtrace true;
-  let tests = find_test_files "./e2e" in
+  let tests = find_test_files "./examples" in
   let failed_tests =
     tests
-    |> List.filter_map (fun (file, expected) : string option ->
+    |> List.filter_map (fun (file, expected, _) : string option ->
            try
              let stdout = compile_and_run file in
              let chan = In_channel.open_text expected in

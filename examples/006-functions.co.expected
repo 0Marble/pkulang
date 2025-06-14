@@ -1,0 +1,6 @@
+->main
+->foo
+->bar
+bar->
+foo->
+main->

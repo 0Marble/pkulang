@@ -1,0 +1,21 @@
+co range(a: int, b: int) int {
+	while (a < b) {
+		yield a;
+		a += 1;
+	}
+}
+
+fn main() void {
+	let coro: co int = create(range, 0, 10);
+	while(1) {
+		if resume (x: coro) {
+			% if coroutine yields, the results gets bound to x
+			println(x);
+		} else {
+			% optional branch for when the coroutine finishes
+			println("done");
+			break;
+		}
+	}
+}
+

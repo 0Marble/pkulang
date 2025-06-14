@@ -1,0 +1,8 @@
+fn main() void {
+	% create array with an array literal
+	let arr: [int] = [0,1,2,3];
+	push(arr, 4);
+	push(arr, 5);
+	print(len(arr), "\n", arr, "\n");
+}
+

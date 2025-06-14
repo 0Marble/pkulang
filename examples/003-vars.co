@@ -1,0 +1,7 @@
+fn main() void {
+	% no type inference :(
+	let x: int = 10;
+	let y: int = 20;
+	println(x + y);
+}
+
