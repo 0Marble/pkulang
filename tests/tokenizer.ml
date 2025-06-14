@@ -37,6 +37,19 @@ let strings_check () =
     (run_tok "\"foo\" \"bar\"");
   check string "string and ident" "String(\"x\"),Ident(y)" (run_tok "\"x\" y")
 
+let comment_check () =
+  check string "Just an empty comment" "" (run_tok "%");
+  check string "Just a comment" "" (run_tok "% foo bar + 10");
+  check string "A comment and stuff after" "Ident(baz),Ident(qux)"
+    (run_tok "% foo bar + 10\nbaz qux");
+  check string "A comment and stuff before" "Ident(baz),Ident(qux)"
+    (run_tok "baz qux % foo bar + 10");
+  check string "A comment and stuff around" "Ident(baz),Ident(qux),Number(123)"
+    (run_tok "baz qux\n% foo bar + 10\n123");
+  check string "Percent in string" "String(\"foo % bar\")"
+    (run_tok "\"foo % bar\"");
+  ()
+
 let fib_example () =
   let src =
     {|
@@ -55,6 +68,7 @@ let () =
       ( "basic",
         [
           ("keyword", `Quick, ident_checks);
+          ("comment", `Quick, comment_check);
           ("number", `Quick, number_checks);
           ("symbols", `Quick, symbol_checks);
           ("strings", `Quick, strings_check);
