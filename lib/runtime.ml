@@ -10,11 +10,14 @@ type command_kind =
   | Trace of int
   | Add of (Stack.location * operand * operand)
   | Sub of (Stack.location * operand * operand)
+  | Mul of (Stack.location * operand * operand)
+  | Div of (Stack.location * operand * operand)
+  | Eql of (Stack.location * operand * operand)
+  | Lt of (Stack.location * operand * operand)
   | Assign of (Stack.location * operand)
   | Goto of jump_target
   | GotoIfZero of (operand * jump_target)
   | GotoIfNeg of (operand * jump_target)
-  | GotoIfNull of (operand * jump_target)
   | Call of (Stack.location * operand array * jump_target)
   | Ret of operand
   | Create of (Stack.location * operand array * jump_target)
@@ -108,6 +111,18 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
     | Sub (dest, lhs, rhs) ->
         Printf.sprintf "Sub %s %s %s" (string_of_dest dest)
           (string_of_operand lhs) (string_of_operand rhs)
+    | Mul (dest, lhs, rhs) ->
+        Printf.sprintf "Mul %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Div (dest, lhs, rhs) ->
+        Printf.sprintf "Div %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Eql (dest, lhs, rhs) ->
+        Printf.sprintf "Eql %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Lt (dest, lhs, rhs) ->
+        Printf.sprintf "Lt %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
     | Assign (dest, v) ->
         Printf.sprintf "Assign %s %s" (string_of_dest dest)
           (string_of_operand v)
@@ -117,9 +132,6 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
           (string_of_tgt tgt)
     | GotoIfNeg (op, tgt) ->
         Printf.sprintf "GotoIfNeg %s %s" (string_of_operand op)
-          (string_of_tgt tgt)
-    | GotoIfNull (op, tgt) ->
-        Printf.sprintf "GotoIfNull %s %s" (string_of_operand op)
           (string_of_tgt tgt)
     | Call (dest, args, fn) ->
         Printf.sprintf "Call %s %s %s" (string_of_dest dest)
@@ -303,9 +315,6 @@ let step r =
     let val_to_int v =
       match v with Value.Number x -> x | Pointer _ -> failwith "Not a number"
     in
-    let val_to_ptr v =
-      match v with Value.Pointer x -> x | Number _ -> failwith "Not a ptr"
-    in
     let get_ip r addr =
       match addr with
       | Static x -> x
@@ -328,6 +337,13 @@ let step r =
     else ();
     Queue.push r.stack.top.ip r.last_instrs;
 
+    let binop dest lhs (op : int -> int -> int) rhs =
+      Stack.store r.stack dest
+        (Value.Number
+           (op (op_to_val r lhs |> val_to_int) (op_to_val r rhs |> val_to_int)));
+      next r
+    in
+
     match cmd.cmd with
     | Halt -> r
     | Nop -> next r
@@ -336,16 +352,26 @@ let step r =
         trace ~flags:x r;
         next r
     | Alloca amt -> next { r with stack = Stack.alloca r.stack amt }
-    | Add (dest, lhs, rhs) ->
-        Stack.store r.stack dest
-          (Value.Number
-             ((op_to_val r lhs |> val_to_int) + (op_to_val r rhs |> val_to_int)));
-        next r
-    | Sub (dest, lhs, rhs) ->
-        Stack.store r.stack dest
-          (Value.Number
-             ((op_to_val r lhs |> val_to_int) - (op_to_val r rhs |> val_to_int)));
-        next r
+    | Add (dest, lhs, rhs) -> binop dest lhs ( + ) rhs
+    | Sub (dest, lhs, rhs) -> binop dest lhs ( - ) rhs
+    | Mul (dest, lhs, rhs) -> binop dest lhs ( * ) rhs
+    | Div (dest, lhs, rhs) -> binop dest lhs ( / ) rhs
+    | Eql (dest, lhs, rhs) -> (
+        match (op_to_val r lhs, op_to_val r rhs) with
+        | Number lhs, Number rhs ->
+            let v = if lhs = rhs then 0 else 1 in
+            Stack.store r.stack dest (Number v);
+            next r
+        | Pointer lhs, Pointer rhs ->
+            let v = if lhs = rhs then 0 else 1 in
+            Stack.store r.stack dest (Number v);
+            next r
+        | Pointer { idx = 0 }, Number 0 | Number 0, Pointer { idx = 0 } ->
+            Stack.store r.stack dest (Number 1);
+            next r
+        | _ -> failwith "Cant compare ptr and number")
+    | Lt (dest, lhs, rhs) ->
+        binop dest lhs (fun a b -> if a < b then 1 else 0) rhs
     | Assign (dest, src) ->
         Stack.store r.stack dest (op_to_val r src);
         next r
@@ -376,17 +402,15 @@ let step r =
         let ip = get_ip r tgt in
         { r with stack = Stack.goto r.stack ip }
     | GotoIfZero (v, addr) ->
-        if op_to_val r v |> val_to_int = 0 then
+        let is_zero =
+          match op_to_val r v with Number x -> x = 0 | Pointer x -> x.idx = 0
+        in
+        if is_zero then
           let ip = get_ip r addr in
           { r with stack = Stack.goto r.stack ip }
         else next r
     | GotoIfNeg (v, addr) ->
         if op_to_val r v |> val_to_int < 0 then
-          let ip = get_ip r addr in
-          { r with stack = Stack.goto r.stack ip }
-        else next r
-    | GotoIfNull (v, addr) ->
-        if (op_to_val r v |> val_to_ptr).idx = 0 then
           let ip = get_ip r addr in
           { r with stack = Stack.goto r.stack ip }
         else next r
