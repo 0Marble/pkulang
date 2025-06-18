@@ -312,21 +312,7 @@ let codegen (src : string) (fn_list : Ast.node list)
     | Expr x ->
         let _ = codegen_expr x registers in
         []
-    | FnDecl x ->
-        let (registers : (int, Stack.location) Hashtbl.t) = Hashtbl.create 64 in
-        List.iteri
-          (fun i (arg : Ast.argument) ->
-            Hashtbl.add registers arg.node_idx (Argument i))
-          x.args;
-        let table_entry = Hashtbl.find function_table (FnDecl x) in
-        patch (Goto (Static !ptr)) table_entry;
-        let alloca = !ptr in
-        emit { cmd = Trap; loc = x.loc };
-        let breaks = codegen_stmt None x.body registers in
-        emit { cmd = Ret Null; loc = x.loc };
-        patch (Alloca (Hashtbl.length registers)) alloca;
-        if List.length breaks <> 0 then failwith "unreachable" else ();
-        []
+    | FnDecl _ | CoDecl _ -> []
     | StructDecl x ->
         let breaks =
           List.map
@@ -344,21 +330,6 @@ let codegen (src : string) (fn_list : Ast.node list)
         in
         if List.length breaks <> 0 then failwith "unreachable" else ();
 
-        []
-    | CoDecl x ->
-        let (registers : (int, Stack.location) Hashtbl.t) = Hashtbl.create 64 in
-        List.iteri
-          (fun i (arg : Ast.argument) ->
-            Hashtbl.add registers arg.node_idx (Argument i))
-          x.args;
-        let table_entry = Hashtbl.find function_table (CoDecl x) in
-        patch (Goto (Static !ptr)) table_entry;
-        let alloca = !ptr in
-        emit { cmd = Trap; loc = x.loc };
-        let breaks = codegen_stmt None x.body registers in
-        emit { cmd = Ret Null; loc = x.loc };
-        patch (Alloca (Hashtbl.length registers)) alloca;
-        if List.length breaks <> 0 then failwith "unreachable" else ();
         []
     | AliasStmt _ -> []
     | IfResumeStmt x -> (
@@ -396,8 +367,31 @@ let codegen (src : string) (fn_list : Ast.node list)
           codegen_stmt None (Ast.top_stmt_to_stmt s) (Hashtbl.create 0)
         in
         if List.length breaks <> 0 then failwith "unreachable" else ()
+  and codegen_fn (x : Ast.node) : unit =
+    let args, body, loc =
+      match x with
+      | FnDecl f -> (f.args, f.body, f.loc)
+      | CoDecl f -> (f.args, f.body, f.loc)
+      | _ -> failwith "unreachable"
+    in
+    let table_entry = Hashtbl.find function_table x in
+    patch (Goto (Static !ptr)) table_entry;
+
+    let (registers : (int, Stack.location) Hashtbl.t) = Hashtbl.create 64 in
+    List.iteri
+      (fun i (arg : Ast.argument) ->
+        Hashtbl.add registers arg.node_idx (Argument i))
+      args;
+    let alloca = !ptr in
+    emit { cmd = Trap; loc };
+    let breaks = codegen_stmt None body registers in
+    emit { cmd = Ret Null; loc };
+    patch (Alloca (Hashtbl.length registers)) alloca;
+    if List.length breaks <> 0 then failwith "unreachable" else ()
   in
+
   List.iter codegen_top_stmt root.stmts;
+  List.iter codegen_fn fn_list;
 
   let generate_start main : int =
     let start = !ptr in

@@ -678,6 +678,32 @@ let coro_range () =
   check string "range" "0\n1\n2\n3\n4\n" r.stdout;
   ()
 
+let return_coro () =
+  let src =
+    {|
+  fn range(from: int, to: int) co int {
+    co range_impl(a: int, b: int) int {
+      while (a < b) {
+        yield a;
+        a += 1;
+      }
+    }
+    return create(range_impl, from, to);
+  }
+  fn main() void {
+    let coro: co int = range(0, 5);
+    while (1) {
+      if resume (x: coro) println(x);
+      else break;
+    }
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "range" "0\n1\n2\n3\n4\n" r.stdout;
+  ()
+
 let () =
   run "Codegen"
     [
@@ -740,5 +766,6 @@ let () =
           ("yield_vals", `Quick, yield_vals);
           ("if_resume", `Quick, if_resume);
           ("coro_range", `Quick, coro_range);
+          ("return_coro", `Quick, return_coro);
         ] );
     ]
