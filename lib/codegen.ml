@@ -1,6 +1,6 @@
 let codegen (src : string) (fn_list : Ast.node list)
-    (get_definition : Ast.node -> Ast.node) (root : Ast.root) : Runtime.runtime
-    =
+    (get_definition : Ast.node -> [ `Node of Ast.node | `Builtin of string ])
+    (root : Ast.root) : Runtime.runtime =
   let cmds =
     Array.init 65536 (fun _ ->
         ({ cmd = Runtime.Trap; loc = Location.Spot 0 } : Runtime.command))
@@ -20,6 +20,18 @@ let codegen (src : string) (fn_list : Ast.node list)
       Hashtbl.add function_table f !ptr;
       emit { cmd = Trap; loc = Ast.node_loc f })
     fn_list;
+
+  let (builtins_table : (string, int) Hashtbl.t) = Hashtbl.create 64 in
+  Hashtbl.add builtins_table "print" !ptr;
+  emit
+    {
+      cmd = Builtin ([| Location (Argument 0) |], "print");
+      loc = Location.Spot 0;
+    };
+  emit { cmd = Ret Null; loc = Location.Spot 0 };
+  Hashtbl.add builtins_table "len" !ptr;
+  emit { cmd = Size (Argument 0, Location (Argument 0)); loc = Location.Spot 0 };
+  emit { cmd = Ret (Location (Argument 0)); loc = Location.Spot 0 };
 
   let (globals_table : (Ast.node, Stack.location) Hashtbl.t) =
     Hashtbl.create 64
@@ -65,11 +77,11 @@ let codegen (src : string) (fn_list : Ast.node list)
             in
             let def = get_definition (DotExpr y) in
             match def with
-            | Field z ->
+            | `Node (Field z) ->
                 let reg = allocate_reg y.node_idx registers in
                 emit { cmd = FieldSet (obj, z.var_name, rhs); loc = x.loc };
                 Location reg
-            | LetStmt z ->
+            | `Node (LetStmt z) ->
                 let reg = get_or_define_global (LetStmt z) in
                 emit { cmd = Assign (reg, rhs); loc = x.loc };
                 Location reg
@@ -153,27 +165,29 @@ let codegen (src : string) (fn_list : Ast.node list)
         let obj = codegen_expr x.obj registers in
         let def = get_definition (DotExpr x) in
         match def with
-        | Field y ->
+        | `Node (Field y) ->
             let reg = allocate_reg x.node_idx registers in
             emit { cmd = FieldGet (reg, obj, y.var_name); loc = x.loc };
             Location reg
-        | LetStmt y -> Location (get_or_define_global (LetStmt y))
-        | FnDecl y -> Number (Hashtbl.find function_table (FnDecl y))
-        | CoDecl y -> Number (Hashtbl.find function_table (CoDecl y))
+        | `Node (LetStmt y) -> Location (get_or_define_global (LetStmt y))
+        | `Node (FnDecl y) -> Number (Hashtbl.find function_table (FnDecl y))
+        | `Node (CoDecl y) -> Number (Hashtbl.find function_table (CoDecl y))
+        | `Builtin s -> Number (Hashtbl.find builtins_table s)
         | _ -> failwith "Error: unsupported definition for field")
     | VarExpr x -> (
         let def = get_definition (VarExpr x) in
         match def with
-        | LetStmt y ->
+        | `Node (LetStmt y) ->
             let loc =
               match Hashtbl.find_opt registers y.node_idx with
               | Some local -> local
               | _ -> get_or_define_global (LetStmt y)
             in
             Location loc
-        | ForLoop y -> Location (Hashtbl.find registers y.node_idx)
-        | FnDecl y -> Number (Hashtbl.find function_table (FnDecl y))
-        | CoDecl y -> Number (Hashtbl.find function_table (CoDecl y))
+        | `Node (ForLoop y) -> Location (Hashtbl.find registers y.node_idx)
+        | `Node (FnDecl y) -> Number (Hashtbl.find function_table (FnDecl y))
+        | `Node (CoDecl y) -> Number (Hashtbl.find function_table (CoDecl y))
+        | `Builtin s -> Number (Hashtbl.find builtins_table s)
         | _ -> failwith "Error: unsupported definition for var")
     | NumExpr x -> Number x.num
     | StringExpr x ->
