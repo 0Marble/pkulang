@@ -22,9 +22,9 @@ let range () =
   check string "range"
     "(root (stmts (fn range (arg a (type int)) (arg b (type int)) (type void) \
      (block (let i (type int) (var a)) (while (bin Lt (var i) (var b)) (block \
-     (yield (var i)) (bin Unimplemented (var i) (num 1)))))) (fn main (type \
-     void) (block (for i (call (var range) (num 0) (num 10)) (call (var \
-     print_int) (var i)))))))"
+     (yield (var i)) (bin Assign (var i) (bin Add (var i) (num 1))))))) (fn \
+     main (type void) (block (for i (call (var range) (num 0) (num 10)) (call \
+     (var print_int) (var i)))))))"
     (run_parser src)
 
 let linked_list () =

@@ -345,12 +345,6 @@ return_stmt:
 expr_stmt:
     | expr=expr; TokSemi; {expr}
 
-binop0: 
-    | TokAssign { ( TokAssign $1, snd $1)}
-    | TokAddAssign { ( TokAddAssign $1, snd $1)}
-    | TokSubAssign { ( TokSubAssign $1, snd $1)}
-    | TokMulAssign { ( TokMulAssign $1, snd $1)}
-    | TokDivAssign { ( TokDivAssign $1, snd $1)}
 binop1: 
     | TokEq { ( TokEq $1, snd $1)}
     | TokNeq { ( TokNeq $1, snd $1)}
@@ -366,9 +360,21 @@ binop4:
     | TokMul { ( TokMul $1, snd $1)}
     | TokDiv { ( TokDiv $1, snd $1)}
 
+assign_op:
+    | TokAddAssign { (TokAdd $1, $1) }
+    | TokSubAssign { (TokSub $1, $1) }
+    | TokMulAssign { (TokMul $1, $1) }
+    | TokDivAssign { (TokDiv $1, $1) }
+
 expr:
-    | lhs=expr; op=binop0; rhs=callable_expr {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
+    | lhs=expr; op=TokAssign; rhs=callable_expr {
+    let n = {lhs; rhs; op=to_op (TokAssign op); node_idx=next_idx (); loc = snd op; } in
+    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    BinExpr n }
+    | lhs=expr; op=assign_op; rhs=callable_expr {
+    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd (snd op); } in
+    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs=(BinExpr n); op=to_op (TokAssign (snd op)); node_idx=next_idx (); loc = snd (snd op); } in
     Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
     BinExpr n }
     | expr1 {$1}
