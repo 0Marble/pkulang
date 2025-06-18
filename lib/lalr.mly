@@ -118,6 +118,11 @@
 
 %%
 
+%public arglist(X):
+    | {[]}
+    | x=X; TokComa; xs=arglist(X) {x::xs}
+    | x=X {[x]}
+
 root: 
     | stmts = list(top_stmt); fin = TokEnd { 
     let table_copy = Hashtbl.copy global_nodes_store in
@@ -134,7 +139,7 @@ top_stmt:
     | alias_stmt { (AliasStmt $1:top_stmt) }
 
 fn_decl:
-    | start=TokFn; name=TokIdent; TokLp; args=separated_list(TokComa, argument); TokRp; ret_type=typ; body=fn_body {
+    | start=TokFn; name=TokIdent; TokLp; args=arglist(argument); TokRp; ret_type=typ; body=fn_body {
     let n = {name=fst name; args; ret_type; body; node_idx = next_idx (); loc = snd start} in 
     Hashtbl.add global_nodes_store n.node_idx (FnDecl n);
     n } 
@@ -178,7 +183,7 @@ field_no_val:
     n }
 
 co_decl:
-    | start=TokCo; name=TokIdent; TokLp; args=separated_list(TokComa, argument); TokRp; yield_type=typ; body=fn_body {
+    | start=TokCo; name=TokIdent; TokLp; args=arglist(argument); TokRp; yield_type=typ; body=fn_body {
     let n = {name=fst name; args; yield_type; body; node_idx = next_idx (); loc = snd start;  } in   
     Hashtbl.add global_nodes_store n.node_idx (CoDecl n);
     n }
@@ -220,14 +225,14 @@ array_type:
     n }
 
 fn_type:
-    | start=TokFn; TokLp; args=separated_list(TokComa, typ); TokRp; ret=typ {
+    | start=TokFn; TokLp; args=arglist(typ); TokRp; ret=typ {
     let n = {args; ret; node_idx = next_idx (); loc = snd start;} in 
     Hashtbl.add global_nodes_store n.node_idx (FnType n);
     n }
 
 
 co_type: 
-    | start=TokCo; TokLp; args=separated_list(TokComa, typ); TokRp; yield=typ {
+    | start=TokCo; TokLp; args=arglist(typ); TokRp; yield=typ {
     let n = {args; yield; node_idx = next_idx (); loc = snd start; } in
     Hashtbl.add global_nodes_store n.node_idx (CoType n);
     n }
@@ -443,13 +448,13 @@ unary_expr:
     n }
 
 call_expr:
-    | fn=callable_expr; loc=TokLp; params=separated_list(TokComa, expr); TokRp; {
+    | fn=callable_expr; loc=TokLp; params=arglist(expr); TokRp; {
     let n = {fn; params; node_idx = next_idx (); loc = snd loc;} in
     Hashtbl.add global_nodes_store n.node_idx (CallExpr n);
     n }
 
 index_expr:
-    | arr=callable_expr; loc=TokLs; idx=separated_list(TokComa, expr); TokRs; {
+    | arr=callable_expr; loc=TokLs; idx=arglist(expr); TokRs; {
     let n = {arr;idx; node_idx=next_idx (); loc=snd loc;} in
     Hashtbl.add global_nodes_store n.node_idx (IndexExpr n);
     n }
@@ -479,7 +484,7 @@ string_expr:
     n }
 
 array_literal:
-    | start=TokLs; elems=separated_list(TokComa, expr); TokRs; {
+    | start=TokLs; elems=arglist(expr); TokRs; {
     let n = {elems; node_idx=next_idx (); loc = snd start;} in
     Hashtbl.add global_nodes_store n.node_idx (ArrayLiteral n);
     n }
@@ -491,7 +496,7 @@ null_literal:
     n }
 
 new_expr:
-    | start=TokNew; typ=typ; TokLb; fields=separated_list(TokComa, field_literal); TokRb; {
+    | start=TokNew; typ=typ; TokLb; fields=arglist(field_literal); TokRb; {
     let n = {typ; fields; node_idx = next_idx (); loc = snd start;} in
     Hashtbl.add global_nodes_store n.node_idx (NewExpr n);
     n }
@@ -510,7 +515,7 @@ resume_expr:
     n }
 
 create_expr:
-    | start=TokCreate; TokLp; args=separated_nonempty_list(TokComa, expr); TokRp; {
+    | start=TokCreate; TokLp; args=arglist(expr); TokRp; {
     let n = {coroutine=List.hd args; params=List.tl args; node_idx = next_idx (); loc = snd start; } in
     Hashtbl.add global_nodes_store n.node_idx (CreateExpr n);
     n }
