@@ -124,8 +124,8 @@ let codegen (src : string) (fn_list : Ast.node list)
           | TokEq -> Eql (res, lhs, rhs)
           | TokLt -> Lt (res, lhs, rhs)
           | TokGt ->
-              emit { cmd = Lt (res, lhs, rhs); loc = x.loc };
-              Sub (res, lhs, rhs)
+              emit { cmd = Sub (res, lhs, rhs); loc = x.loc };
+              Lt (res, Number 0, Location res)
           | TokNeq ->
               emit { cmd = Eql (res, lhs, rhs); loc = x.loc };
               Sub (res, Number 1, Location res)
@@ -185,10 +185,13 @@ let codegen (src : string) (fn_list : Ast.node list)
               | _ -> get_or_define_global (LetStmt y)
             in
             Location loc
+        | `Node (Argument y) -> Location (Hashtbl.find registers y.node_idx)
         | `Node (ForLoop y) -> Location (Hashtbl.find registers y.node_idx)
+        | `Node (IfResumeStmt y) -> Location (Hashtbl.find registers y.node_idx)
         | `Node (FnDecl y) -> Number (Hashtbl.find function_table (FnDecl y))
         | `Node (CoDecl y) -> Number (Hashtbl.find function_table (CoDecl y))
         | `Builtin s -> Number (Hashtbl.find builtins_table s)
+        | `Node (StructDecl _) -> Null
         | _ -> failwith "Error: unsupported definition for var")
     | NumExpr x -> Number x.num
     | StringExpr x ->
@@ -213,6 +216,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         List.iter
           (fun (field : Ast.field_literal) ->
             let elem = codegen_expr field.value registers in
+            emit { cmd = AddField (obj, field.name); loc = x.loc };
             emit { cmd = FieldSet (obj, field.name, elem); loc = x.loc })
           x.fields;
         Location obj
@@ -265,8 +269,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         let breaks = codegen_stmt (Some start) x.body registers in
         emit { cmd = Goto (Static start); loc = x.loc };
         List.iter (patch (Goto (Static !ptr))) breaks;
-        cmds.(jump_to_end) <-
-          { cmd = GotoIfZero (cond, Static !ptr); loc = x.loc };
+        patch (GotoIfZero (cond, Static !ptr)) jump_to_end;
         []
     | ContinueStmt x -> (
         match this_loop_start with
@@ -277,8 +280,9 @@ let codegen (src : string) (fn_list : Ast.node list)
     | BreakStmt x ->
         if this_loop_start = None then failwith "Error: break outside of loop"
         else ();
+        let res = [ !ptr ] in
         emit { cmd = Trap; loc = x.loc };
-        [ !ptr ]
+        res
     | IfStmt x -> (
         let cond = codegen_expr x.condition registers in
         let if_true_start = !ptr in

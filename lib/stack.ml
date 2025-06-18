@@ -108,7 +108,7 @@ let ret (s : stack) v =
   | Some caller ->
       let s = { s with top = caller } in
       store s caller.result v;
-      s
+      inc_ip s
   | None -> (
       match s.yielder with
       | Some (y, ip) -> { y with top = { y.top with ip } }

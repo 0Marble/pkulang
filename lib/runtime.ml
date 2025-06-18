@@ -365,7 +365,7 @@ let step r =
     | Eql (dest, lhs, rhs) -> (
         match (op_to_val r lhs, op_to_val r rhs) with
         | Number lhs, Number rhs ->
-            let v = if lhs = rhs then 0 else 1 in
+            let v = if lhs = rhs then 1 else 0 in
             Stack.store r.stack dest (Number v);
             next r
         | Pointer lhs, Pointer rhs ->
@@ -387,7 +387,7 @@ let step r =
         { r with stack = Stack.call r.stack dest args fn }
     | Ret v ->
         let v = op_to_val r v in
-        next { r with stack = Stack.ret r.stack v }
+        { r with stack = Stack.ret r.stack v }
     | Builtin (args, x) when x = "print" || x = "println" ->
         let s, _ =
           Array.fold_left

@@ -56,6 +56,11 @@
     
     let global_nodes_store = Hashtbl.create 64
 
+    let reset_parser_global_state () = 
+        global_index := 100;
+        Hashtbl.reset global_nodes_store;
+        ()
+
     let next_idx () =
       global_index := !global_index + 1;
       !global_index - 1
@@ -115,8 +120,10 @@
 
 root: 
     | stmts = list(top_stmt); fin = TokEnd { 
-    let n = ({stmts; all_nodes = global_nodes_store; node_idx = next_idx (); loc = snd fin; }:root) in
-    Hashtbl.add global_nodes_store n.node_idx (Root n);
+    let table_copy = Hashtbl.copy global_nodes_store in
+    let n = ({stmts; all_nodes = table_copy; node_idx = next_idx (); loc = snd fin; }:root) in
+    Hashtbl.add n.all_nodes n.node_idx (Root n);
+    reset_parser_global_state ();
     n }
 
 top_stmt:
@@ -310,7 +317,7 @@ if_stmt_with_else:
 if_resume_stmt:
     | if_resume_stmt_base TokElse stmt {
     let n = {$1 with if_bad= Some $3} in
-    Hashtbl.add global_nodes_store n.node_idx (IfResumeStmt n);
+    Hashtbl.replace global_nodes_store n.node_idx (IfResumeStmt n);
     n }
     | if_resume_stmt_base {$1}
 
