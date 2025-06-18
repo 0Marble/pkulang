@@ -704,6 +704,161 @@ let return_coro () =
   check string "range" "0\n1\n2\n3\n4\n" r.stdout;
   ()
 
+let for_loop () =
+  let src =
+    {|
+  fn range(from: int, to: int) co int {
+    co range_impl(a: int, b: int) int {
+      while (a < b) {
+        yield a;
+        a += 1;
+      }
+    }
+    return create(range_impl, from, to);
+  }
+  fn main() void {
+    for (x: range(0, 5)) {
+      println(x);
+    }
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "range" "0\n1\n2\n3\n4\n" r.stdout;
+  ()
+
+let for_loop_break () =
+  let src =
+    {|
+  fn range(from: int, to: int) co int {
+    co range_impl(a: int, b: int) int {
+      while (a < b) {
+        yield a;
+        a += 1;
+      }
+    }
+    return create(range_impl, from, to);
+  }
+  fn main() void {
+    for (x: range(0, 5)) {
+      if (x == 3) break;
+      println(x);
+    }
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "range" "0\n1\n2\n" r.stdout;
+  ()
+
+let for_loop_continue () =
+  let src =
+    {|
+  fn range(from: int, to: int) co int {
+    co range_impl(a: int, b: int) int {
+      while (a < b) {
+        yield a;
+        a += 1;
+      }
+    }
+    return create(range_impl, from, to);
+  }
+  fn main() void {
+    for (x: range(0, 5)) {
+      if (x == 3) continue;
+      println(x);
+    }
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "range" "0\n1\n2\n4\n" r.stdout;
+  ()
+
+let dynamic_call () =
+  let src =
+    {|
+  fn foo() void {
+    println("foo");
+  }
+  fn bar() void {
+    println("bar");
+  }
+  fn baz() fn() void {
+    if (0) return bar;
+    else return foo;
+  }
+  fn main() void {
+    baz()();
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "dynamic call" "foo\n" r.stdout;
+  ()
+
+let polymorphism () =
+  let src =
+    {|
+  co dog() void {
+    while(1) {
+      println("bark");
+      yield;
+    }
+  }
+  co cat() void {
+    while(1) {
+      println("meow");
+      yield;
+    }
+  }
+  fn main() void {
+    let animals: [co void] = [create(dog), create(cat)];
+    resume(animals[0]);
+    resume(animals[1]);
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "polymorphism" "bark\nmeow\n" r.stdout;
+  ()
+
+let preorder () =
+  let src =
+    {|
+  struct Tree {
+    val: int,
+    left: Tree,
+    right: Tree,
+    co iter(root: Tree) int {
+      yield root.val;
+      if (root.left) Tree.iter(root.left);
+      if (root.right) Tree.iter(root.right);
+    }
+  }
+  fn main() void {
+    let t: Tree = new Tree{
+      val: 0,
+      left: new Tree{val: 1, left: null, right: null}, 
+      right: new Tree{
+        val: 2, 
+        left: new Tree{val: 3, left: null, right: null}, 
+        right: null},
+    };
+    for (x: create(Tree.iter, t)) println(x);
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 200 in
+  check string "preorder" "0\n1\n2\n3\n" r.stdout;
+  ()
+
 let () =
   run "Codegen"
     [
@@ -767,5 +922,17 @@ let () =
           ("if_resume", `Quick, if_resume);
           ("coro_range", `Quick, coro_range);
           ("return_coro", `Quick, return_coro);
+        ] );
+      ( "for loop",
+        [
+          ("for_loop", `Quick, for_loop);
+          ("for_loop_break", `Quick, for_loop_break);
+          ("for_loop_continue", `Quick, for_loop_continue);
+        ] );
+      ( "other",
+        [
+          ("dynamic_call", `Quick, dynamic_call);
+          ("polymorphism", `Quick, polymorphism);
+          ("preorder", `Quick, preorder);
         ] );
     ]
