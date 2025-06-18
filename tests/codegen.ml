@@ -40,6 +40,7 @@ let dummy_get_definition map (node : Ast.node) :
     [ `Node of Ast.node | `Builtin of string ] =
   match node with
   | DotExpr x -> `Node (Hashtbl.find map x.field)
+  | NamedType x -> `Node (Hashtbl.find map x.name)
   | VarExpr x ->
       Hashtbl.find_opt map x.name
       |> Option.map (fun n : [ `Node of Ast.node | `Builtin of string ] ->
@@ -835,10 +836,14 @@ let preorder () =
     val: int,
     left: Tree,
     right: Tree,
-    co iter(root: Tree) int {
-      yield root.val;
-      if (root.left) Tree.iter(root.left);
-      if (root.right) Tree.iter(root.right);
+
+    fn iter(root: Tree) co int {
+      co iter_impl(r: Tree) int {
+        yield r.val;
+        if (r.left) iter_impl(r.left);
+        if (r.right) iter_impl(r.right);
+      }
+      return create(iter_impl, root);
     }
   }
   fn main() void {
@@ -850,7 +855,7 @@ let preorder () =
         left: new Tree{val: 3, left: null, right: null}, 
         right: null},
     };
-    for (x: create(Tree.iter, t)) println(x);
+    for (x: Tree.iter(t)) println(x);
   }
   |}
   in

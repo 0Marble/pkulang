@@ -213,10 +213,25 @@ let codegen (src : string) (fn_list : Ast.node list)
     | NewExpr x ->
         let obj = allocate_reg x.node_idx registers in
         emit { cmd = New obj; loc = x.loc };
+        (match get_definition (Ast.type_to_node x.typ) with
+        | `Node (StructDecl y) ->
+            List.iter
+              (fun (d : Ast.decl) ->
+                match d with
+                | Field z -> (
+                    emit { cmd = AddField (obj, z.var_name); loc = x.loc };
+                    match z.value with
+                    | Some v ->
+                        let v = codegen_expr v registers in
+                        emit
+                          { cmd = FieldSet (obj, z.var_name, v); loc = x.loc }
+                    | _ -> ())
+                | _ -> ())
+              y.decls
+        | _ -> failwith "Error: unsupported type for new expression");
         List.iter
           (fun (field : Ast.field_literal) ->
             let elem = codegen_expr field.value registers in
-            emit { cmd = AddField (obj, field.name); loc = x.loc };
             emit { cmd = FieldSet (obj, field.name, elem); loc = x.loc })
           x.fields;
         Location obj
