@@ -22,10 +22,10 @@ let codegen (src : string) (fn_list : Ast.node list)
     fn_list;
 
   let (builtins_table : (string, int) Hashtbl.t) = Hashtbl.create 64 in
-  Hashtbl.add builtins_table "print" !ptr;
+  Hashtbl.add builtins_table "println" !ptr;
   emit
     {
-      cmd = Builtin ([| Location (Argument 0) |], "print");
+      cmd = Builtin ([| Location (Argument 0) |], "println");
       loc = Location.Spot 0;
     };
   emit { cmd = Ret Null; loc = Location.Spot 0 };
@@ -60,6 +60,7 @@ let codegen (src : string) (fn_list : Ast.node list)
   let rec codegen_expr e registers =
     try codegen_expr' e registers
     with err ->
+      Printexc.print_backtrace stderr;
       Error.fail_at_spot "Codegen error" src
         (Ast.expr_to_node e |> Ast.node_loc)
         err
@@ -231,6 +232,7 @@ let codegen (src : string) (fn_list : Ast.node list)
   and codegen_stmt this_loop_start s registers =
     try codegen_stmt' this_loop_start s registers
     with err ->
+      Printexc.print_backtrace stderr;
       Error.fail_at_spot "Codegen error" src
         (Ast.stmt_to_node s |> Ast.node_loc)
         err
@@ -317,6 +319,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         let alloca = !ptr in
         emit { cmd = Trap; loc = x.loc };
         let breaks = codegen_stmt None x.body registers in
+        emit { cmd = Ret Null; loc = x.loc };
         patch (Alloca (Hashtbl.length registers)) alloca;
         if List.length breaks <> 0 then failwith "unreachable" else ();
         []
@@ -349,6 +352,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         let alloca = !ptr in
         emit { cmd = Trap; loc = x.loc };
         let breaks = codegen_stmt None x.body registers in
+        emit { cmd = Ret Null; loc = x.loc };
         patch (Alloca (Hashtbl.length registers)) alloca;
         if List.length breaks <> 0 then failwith "unreachable" else ();
         []
@@ -404,6 +408,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         | _ -> failwith "Error: not a global var definition")
       globals_table;
     emit { cmd = Call (Void, [||], Static main); loc = Location.Spot 0 };
+    emit { cmd = Halt; loc = Location.Spot 0 };
     patch (Alloca (Hashtbl.length registers)) start;
     start
   in
@@ -421,4 +426,5 @@ let codegen (src : string) (fn_list : Ast.node list)
     | None -> failwith "Error: no fn main() void declared"
   in
   let start = generate_start main in
-  Runtime.create src cmds start (Hashtbl.length globals_table)
+  Runtime.create src (Array.sub cmds 0 !ptr) start
+    (Hashtbl.length globals_table)

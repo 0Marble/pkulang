@@ -1,4 +1,9 @@
-type root = { stmts : top_stmt list; node_idx : int; loc : Location.location }
+type root = {
+  stmts : top_stmt list;
+  all_nodes : (int, node) Hashtbl.t;
+  node_idx : int;
+  loc : Location.location;
+}
 
 and top_stmt =
   | FnDecl of fn_decl
