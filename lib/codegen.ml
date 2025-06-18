@@ -21,6 +21,18 @@ let codegen (src : string) (fn_list : Ast.node list)
       emit { cmd = Trap; loc = Ast.node_loc f })
     fn_list;
 
+  let (globals_table : (Ast.node, Stack.location) Hashtbl.t) =
+    Hashtbl.create 64
+  in
+  let get_or_define_global node =
+    match Hashtbl.find_opt globals_table node with
+    | Some reg -> reg
+    | None ->
+        let (reg : Stack.location) = Global (Hashtbl.length globals_table) in
+        Hashtbl.add globals_table node reg;
+        reg
+  in
+
   let allocate_reg node_idx registers =
     let reg = Stack.Register (Hashtbl.length registers) in
     Hashtbl.add registers node_idx reg;
@@ -57,7 +69,10 @@ let codegen (src : string) (fn_list : Ast.node list)
                 let reg = allocate_reg y.node_idx registers in
                 emit { cmd = FieldSet (obj, z.var_name, rhs); loc = x.loc };
                 Location reg
-            | LetStmt _ -> failwith "Todo: assign to static vars"
+            | LetStmt z ->
+                let reg = get_or_define_global (LetStmt z) in
+                emit { cmd = Assign (reg, rhs); loc = x.loc };
+                Location reg
             | _ -> failwith "Error: unsupported assignment to dot expr")
         | IndexExpr y ->
             let rec index_set_expr arr ids =
@@ -142,14 +157,20 @@ let codegen (src : string) (fn_list : Ast.node list)
             let reg = allocate_reg x.node_idx registers in
             emit { cmd = FieldGet (reg, obj, y.var_name); loc = x.loc };
             Location reg
-        | LetStmt _ -> failwith "Todo: static vars"
+        | LetStmt y -> Location (get_or_define_global (LetStmt y))
         | FnDecl y -> Number (Hashtbl.find function_table (FnDecl y))
         | CoDecl y -> Number (Hashtbl.find function_table (CoDecl y))
         | _ -> failwith "Error: unsupported definition for field")
     | VarExpr x -> (
         let def = get_definition (VarExpr x) in
         match def with
-        | LetStmt y -> Location (Hashtbl.find registers y.node_idx)
+        | LetStmt y ->
+            let loc =
+              match Hashtbl.find_opt registers y.node_idx with
+              | Some local -> local
+              | _ -> get_or_define_global (LetStmt y)
+            in
+            Location loc
         | ForLoop y -> Location (Hashtbl.find registers y.node_idx)
         | FnDecl y -> Number (Hashtbl.find function_table (FnDecl y))
         | CoDecl y -> Number (Hashtbl.find function_table (CoDecl y))
@@ -279,7 +300,10 @@ let codegen (src : string) (fn_list : Ast.node list)
           x.args;
         let table_entry = Hashtbl.find function_table (FnDecl x) in
         patch (Goto (Static !ptr)) table_entry;
+        let alloca = !ptr in
+        emit { cmd = Trap; loc = x.loc };
         let breaks = codegen_stmt None x.body registers in
+        patch (Alloca (Hashtbl.length registers)) alloca;
         if List.length breaks <> 0 then failwith "unreachable" else ();
         []
     | StructDecl x ->
@@ -290,7 +314,9 @@ let codegen (src : string) (fn_list : Ast.node list)
               | FnDecl z -> codegen_stmt None (FnDecl z) registers
               | CoDecl z -> codegen_stmt None (CoDecl z) registers
               | StructDecl z -> codegen_stmt None (StructDecl z) registers
-              | LetStmt _ -> failwith "Todo: global variables"
+              | LetStmt z ->
+                  let _ = get_or_define_global (LetStmt z) in
+                  []
               | Field _ -> [])
             x.decls
           |> List.concat
@@ -306,7 +332,10 @@ let codegen (src : string) (fn_list : Ast.node list)
           x.args;
         let table_entry = Hashtbl.find function_table (CoDecl x) in
         patch (Goto (Static !ptr)) table_entry;
+        let alloca = !ptr in
+        emit { cmd = Trap; loc = x.loc };
         let breaks = codegen_stmt None x.body registers in
+        patch (Alloca (Hashtbl.length registers)) alloca;
         if List.length breaks <> 0 then failwith "unreachable" else ();
         []
     | AliasStmt _ -> []
@@ -335,12 +364,47 @@ let codegen (src : string) (fn_list : Ast.node list)
         in
         emit { cmd = Yield value; loc = x.loc };
         []
+  and codegen_top_stmt (s : Ast.top_stmt) : unit =
+    match s with
+    | LetStmt x ->
+        let _ = get_or_define_global (LetStmt x) in
+        ()
+    | _ ->
+        let breaks =
+          codegen_stmt None (Ast.top_stmt_to_stmt s) (Hashtbl.create 0)
+        in
+        if List.length breaks <> 0 then failwith "unreachable" else ()
   in
-  List.iter
-    (fun (x : Ast.top_stmt) ->
-      let breaks =
-        codegen_stmt None (Ast.top_stmt_to_stmt x) (Hashtbl.create 0)
-      in
-      if List.length breaks <> 0 then failwith "unreachable" else ())
-    root.stmts;
-  failwith "Todo"
+  List.iter codegen_top_stmt root.stmts;
+
+  let generate_start main : int =
+    let start = !ptr in
+    let registers = Hashtbl.create 64 in
+    emit { cmd = Trap; loc = Location.Spot 0 };
+    Hashtbl.iter
+      (fun (node : Ast.node) (glob_reg : Stack.location) ->
+        match node with
+        | LetStmt x ->
+            let reg = codegen_expr x.value registers in
+            emit { cmd = Assign (glob_reg, reg); loc = x.loc }
+        | _ -> failwith "Error: not a global var definition")
+      globals_table;
+    emit { cmd = Call (Void, [||], Static main); loc = Location.Spot 0 };
+    patch (Alloca (Hashtbl.length registers)) start;
+    start
+  in
+  let main =
+    match
+      List.find_map
+        (fun (node : Ast.node) ->
+          match node with
+          | FnDecl f when f.name = "main" ->
+              Hashtbl.find_opt function_table node
+          | _ -> None)
+        fn_list
+    with
+    | Some main -> main
+    | None -> failwith "Error: no fn main() void declared"
+  in
+  let start = generate_start main in
+  Runtime.create src cmds start (Hashtbl.length globals_table)
