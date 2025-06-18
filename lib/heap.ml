@@ -73,6 +73,15 @@ let load_string_literal h ptr lit =
          (fun acc c -> Array.append acc [| int_of_char c |])
          [||] lit)
 
+let concat h a b dest =
+  let a = ptr_valid h a in
+  let b = ptr_valid h b in
+  let dest = ptr_valid h dest in
+  match (h.memory.(a.idx), h.memory.(b.idx)) with
+  | HeapString s1, HeapString s2 ->
+      h.memory.(dest.idx) <- HeapString (Array.append s1 s2)
+  | _ -> failwith "Error: can not concat"
+
 let store_coroutine h ptr f =
   let ptr = ptr_valid h ptr in
   h.memory.(ptr.idx) <- Coroutine f

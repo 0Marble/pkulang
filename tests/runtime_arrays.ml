@@ -132,6 +132,19 @@ let string_object () =
          Halt;
        ]
        20);
+  check string "concat strings" "foobar"
+    (interpret
+       [
+         Alloca 2;
+         New (Register 0);
+         StringLiteral (Register 0, "foo");
+         New (Register 1);
+         StringLiteral (Register 1, "bar");
+         Add (Register 0, Location (Register 0), Location (Register 1));
+         Builtin ([| Location (Register 0) |], "print");
+         Halt;
+       ]
+       100);
   ()
 
 let length () =

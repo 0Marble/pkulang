@@ -226,7 +226,7 @@ let create source code main globals_cnt =
   in
   rt
 
-let trace ?(flags = 15) r =
+let trace ?(flags = 31) r =
   prerr_string "================TRACE START================\n";
 
   if Int.logand flags 1 <> 0 then (
@@ -300,6 +300,11 @@ let trace ?(flags = 15) r =
       r.stack.top.locals)
   else ();
 
+  if Int.logand flags 16 <> 0 then (
+    prerr_string "======== Section 5: Current Line ==========\n";
+    prerr_endline (Location.loc_to_str r.source r.code.(r.stack.top.ip).loc))
+  else ();
+
   prerr_endline "=================TRACE END=================\n"
 
 let finished r =
@@ -358,7 +363,18 @@ let step r =
         trace ~flags:x r;
         next r
     | Alloca amt -> next { r with stack = Stack.alloca r.stack amt }
-    | Add (dest, lhs, rhs) -> binop dest lhs ( + ) rhs
+    | Add (dest, lhs, rhs) -> (
+        match (op_to_val r lhs, op_to_val r rhs) with
+        | Number x, Number y ->
+            Stack.store r.stack dest (Number (x + y));
+            next r
+        | Pointer x, Pointer y ->
+            let heap, dest_ptr = Heap.alloc r.heap in
+            Heap.concat heap (Pointer x) (Pointer y) dest_ptr;
+            let r = { r with heap } in
+            Stack.store r.stack dest dest_ptr;
+            next r
+        | _ -> failwith "Error: can not add")
     | Sub (dest, lhs, rhs) -> binop dest lhs ( - ) rhs
     | Mul (dest, lhs, rhs) -> binop dest lhs ( * ) rhs
     | Div (dest, lhs, rhs) -> binop dest lhs ( / ) rhs

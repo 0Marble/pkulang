@@ -22,9 +22,14 @@ let codegen (src : string) (fn_list : Ast.node list)
     fn_list;
 
   let (builtins_table : (string, int) Hashtbl.t) = Hashtbl.create 64 in
-  Hashtbl.add builtins_table "len" !ptr;
-  emit { cmd = Size (Argument 0, Location (Argument 0)); loc = Location.Spot 0 };
-  emit { cmd = Ret (Location (Argument 0)); loc = Location.Spot 0 };
+  let create_builtin name cmds =
+    Hashtbl.add builtins_table name !ptr;
+    List.iter (fun cmd -> emit { cmd; loc = Location.Spot 0 }) cmds;
+    ()
+  in
+
+  create_builtin "len"
+    [ Size (Argument 0, Location (Argument 0)); Ret (Location (Argument 0)) ];
 
   let (globals_table : (Ast.node, Stack.location) Hashtbl.t) =
     Hashtbl.create 64

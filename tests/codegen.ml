@@ -299,6 +299,44 @@ let array_multidimensional () =
     r.stdout;
   ()
 
+let print_string () =
+  let src = {|
+  fn main() void {
+    println("foo");
+  }
+  |} in
+  let r = compile src in
+  let r = interpret r 100 in
+  check string "print string" "foo\n" r.stdout;
+  ()
+
+let string_index () =
+  let src =
+    {|
+  fn main() void {
+    let s: string = "foo";
+    println(s[0]);
+    s[0] = 70;
+    println(s);
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 100 in
+  check string "string index" "102\nFoo\n" r.stdout;
+  ()
+
+let string_concat () =
+  let src = {|
+  fn main() void {
+    println("foo" + "bar");
+  }
+  |} in
+  let r = compile src in
+  let r = interpret r 100 in
+  check string "string index" "foobar\n" r.stdout;
+  ()
+
 let print_struct () =
   let src =
     {|
@@ -947,6 +985,12 @@ let () =
           ("array_index_set", `Quick, array_index_set);
           ("array_length", `Quick, array_length);
           ("array_multidimensional", `Quick, array_multidimensional);
+        ] );
+      ( "strings",
+        [
+          ("print_string", `Quick, print_string);
+          ("string_index", `Quick, string_index);
+          ("string_concat", `Quick, string_concat);
         ] );
       ( "structs",
         [
