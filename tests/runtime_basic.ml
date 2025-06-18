@@ -36,7 +36,7 @@ let null () =
   check string "null" "10"
     (interpret
        [
-         GotoIfNull (Null, Static 2);
+         GotoIfZero (Null, Static 2);
          Trap;
          Builtin ([| Number 10 |], "print");
          Halt;
@@ -99,7 +99,7 @@ let goto () =
   check string "goto if null" "10"
     (interpret
        [
-         GotoIfNull (Null, Static 2);
+         GotoIfZero (Null, Static 2);
          Trap;
          Builtin ([| Number 10 |], "print");
          Halt;

@@ -1,5 +1,6 @@
-let codegen (fn_list : Ast.node list) (get_definition : Ast.node -> Ast.node)
-    (root : Ast.root) : Runtime.runtime =
+let codegen (src : string) (fn_list : Ast.node list)
+    (get_definition : Ast.node -> Ast.node) (root : Ast.root) : Runtime.runtime
+    =
   let cmds =
     Array.init 65536 (fun _ ->
         ({ cmd = Runtime.Trap; loc = Location.Spot 0 } : Runtime.command))
@@ -11,6 +12,14 @@ let codegen (fn_list : Ast.node list) (get_definition : Ast.node -> Ast.node)
     cmds.(!ptr) <- cmd;
     ptr := !ptr + 1
   in
+  let patch cmd ptr = cmds.(ptr) <- { cmd; loc = cmds.(ptr).loc } in
+
+  let (function_table : (Ast.node, int) Hashtbl.t) = Hashtbl.create 64 in
+  List.iter
+    (fun f ->
+      Hashtbl.add function_table f !ptr;
+      emit { cmd = Trap; loc = Ast.node_loc f })
+    fn_list;
 
   let allocate_reg node_idx registers =
     let reg = Stack.Register (Hashtbl.length registers) in
@@ -24,8 +33,14 @@ let codegen (fn_list : Ast.node list) (get_definition : Ast.node -> Ast.node)
     | _ -> failwith "Error: unsupported function pointer"
   in
 
-  let rec codegen_expr (e : Ast.expr)
-      (registers : (int, Stack.location) Hashtbl.t) : Runtime.operand =
+  let rec codegen_expr e registers =
+    try codegen_expr' e registers
+    with err ->
+      Error.fail_at_spot "Codegen error" src
+        (Ast.expr_to_node e |> Ast.node_loc)
+        err
+  and codegen_expr' (e : Ast.expr) (registers : (int, Stack.location) Hashtbl.t)
+      : Runtime.operand =
     match e with
     | BinExpr x when x.op.kind = TokAssign -> (
         let rhs = codegen_expr x.rhs registers in
@@ -128,16 +143,16 @@ let codegen (fn_list : Ast.node list) (get_definition : Ast.node -> Ast.node)
             emit { cmd = FieldGet (reg, obj, y.var_name); loc = x.loc };
             Location reg
         | LetStmt _ -> failwith "Todo: static vars"
-        | FnDecl _ -> failwith "Todo: function locations"
-        | CoDecl _ -> failwith "Todo: function locations"
+        | FnDecl y -> Number (Hashtbl.find function_table (FnDecl y))
+        | CoDecl y -> Number (Hashtbl.find function_table (CoDecl y))
         | _ -> failwith "Error: unsupported definition for field")
     | VarExpr x -> (
         let def = get_definition (VarExpr x) in
         match def with
         | LetStmt y -> Location (Hashtbl.find registers y.node_idx)
         | ForLoop y -> Location (Hashtbl.find registers y.node_idx)
-        | FnDecl _ -> failwith "Todo: function locations"
-        | CoDecl _ -> failwith "Todo: function locations"
+        | FnDecl y -> Number (Hashtbl.find function_table (FnDecl y))
+        | CoDecl y -> Number (Hashtbl.find function_table (CoDecl y))
         | _ -> failwith "Error: unsupported definition for var")
     | NumExpr x -> Number x.num
     | StringExpr x ->
@@ -178,5 +193,154 @@ let codegen (fn_list : Ast.node list) (get_definition : Ast.node -> Ast.node)
         let coro = codegen_expr x.coroutine registers in
         emit { cmd = Resume (res, coro, trap_for_resume); loc = x.loc };
         Location res
+  and codegen_stmt this_loop_start s registers =
+    try codegen_stmt' this_loop_start s registers
+    with err ->
+      Error.fail_at_spot "Codegen error" src
+        (Ast.stmt_to_node s |> Ast.node_loc)
+        err
+  and codegen_stmt' (this_loop_start : int option) (s : Ast.stmt) registers :
+      int list =
+    match s with
+    | Block x ->
+        List.map (fun y -> codegen_stmt this_loop_start y registers) x.stmts
+        |> List.concat
+    | LetStmt x ->
+        let reg = allocate_reg x.node_idx registers in
+        let value = codegen_expr x.value registers in
+        emit { cmd = Assign (reg, value); loc = x.loc };
+        []
+    | ForLoop x ->
+        let coro = codegen_expr x.iterator registers in
+        let reg = allocate_reg x.node_idx registers in
+        let start = !ptr in
+        emit { cmd = Trap; loc = x.loc };
+        let breaks = codegen_stmt (Some start) x.body registers in
+        emit { cmd = Goto (Static start); loc = x.loc };
+        List.iter (patch (Goto (Static !ptr))) breaks;
+        patch (Resume (reg, coro, Static !ptr)) start;
+        []
+    | WhileLoop x ->
+        let start = !ptr in
+        let cond = codegen_expr x.condition registers in
+        let jump_to_end = !ptr in
+        emit { cmd = Trap; loc = x.loc };
+        let breaks = codegen_stmt (Some start) x.body registers in
+        emit { cmd = Goto (Static start); loc = x.loc };
+        List.iter (patch (Goto (Static !ptr))) breaks;
+        cmds.(jump_to_end) <-
+          { cmd = GotoIfZero (cond, Static !ptr); loc = x.loc };
+        []
+    | ContinueStmt x -> (
+        match this_loop_start with
+        | Some start ->
+            emit { cmd = Goto (Static start); loc = x.loc };
+            []
+        | None -> failwith "Error: continue outside of loop")
+    | BreakStmt x ->
+        if this_loop_start = None then failwith "Error: break outside of loop"
+        else ();
+        emit { cmd = Trap; loc = x.loc };
+        [ !ptr ]
+    | IfStmt x -> (
+        let cond = codegen_expr x.condition registers in
+        let if_true_start = !ptr in
+        emit { cmd = Trap; loc = x.loc };
+        let if_true_breaks = codegen_stmt this_loop_start x.if_true registers in
+        match x.if_false with
+        | Some if_false ->
+            let if_true_end = !ptr in
+            emit { cmd = Trap; loc = x.loc };
+            patch (GotoIfZero (cond, Static !ptr)) if_true_start;
+            let if_false_breaks =
+              codegen_stmt this_loop_start if_false registers
+            in
+            patch (Goto (Static !ptr)) if_true_end;
+            List.append if_false_breaks if_true_breaks
+        | None ->
+            patch (GotoIfZero (cond, Static !ptr)) if_true_start;
+            if_true_breaks)
+    | ReturnStmt x ->
+        let res =
+          x.value
+          |> Option.map (fun v -> codegen_expr v registers)
+          |> Option.value ~default:Runtime.Null
+        in
+        emit { cmd = Ret res; loc = x.loc };
+        []
+    | Expr x ->
+        let _ = codegen_expr x registers in
+        []
+    | FnDecl x ->
+        let (registers : (int, Stack.location) Hashtbl.t) = Hashtbl.create 64 in
+        List.iteri
+          (fun i (arg : Ast.argument) ->
+            Hashtbl.add registers arg.node_idx (Argument i))
+          x.args;
+        let table_entry = Hashtbl.find function_table (FnDecl x) in
+        patch (Goto (Static !ptr)) table_entry;
+        let breaks = codegen_stmt None x.body registers in
+        if List.length breaks <> 0 then failwith "unreachable" else ();
+        []
+    | StructDecl x ->
+        let breaks =
+          List.map
+            (fun (y : Ast.decl) ->
+              match y with
+              | FnDecl z -> codegen_stmt None (FnDecl z) registers
+              | CoDecl z -> codegen_stmt None (CoDecl z) registers
+              | StructDecl z -> codegen_stmt None (StructDecl z) registers
+              | LetStmt _ -> failwith "Todo: global variables"
+              | Field _ -> [])
+            x.decls
+          |> List.concat
+        in
+        if List.length breaks <> 0 then failwith "unreachable" else ();
+
+        []
+    | CoDecl x ->
+        let (registers : (int, Stack.location) Hashtbl.t) = Hashtbl.create 64 in
+        List.iteri
+          (fun i (arg : Ast.argument) ->
+            Hashtbl.add registers arg.node_idx (Argument i))
+          x.args;
+        let table_entry = Hashtbl.find function_table (CoDecl x) in
+        patch (Goto (Static !ptr)) table_entry;
+        let breaks = codegen_stmt None x.body registers in
+        if List.length breaks <> 0 then failwith "unreachable" else ();
+        []
+    | AliasStmt _ -> []
+    | IfResumeStmt x -> (
+        let coro = codegen_expr x.coroutine registers in
+        let reg = allocate_reg x.node_idx registers in
+        let resume_start = !ptr in
+        emit { cmd = Trap; loc = x.loc };
+        let if_ok_breaks = codegen_stmt this_loop_start x.if_ok registers in
+        match x.if_bad with
+        | Some if_bad ->
+            let if_ok_end = !ptr in
+            emit { cmd = Trap; loc = x.loc };
+            patch (Resume (reg, coro, Static !ptr)) resume_start;
+            let if_bad_breaks = codegen_stmt this_loop_start if_bad registers in
+            patch (Goto (Static !ptr)) if_ok_end;
+            List.append if_ok_breaks if_bad_breaks
+        | None ->
+            patch (Resume (reg, coro, Static !ptr)) resume_start;
+            if_ok_breaks)
+    | YieldStmt x ->
+        let value =
+          x.value
+          |> Option.map (fun v -> codegen_expr v registers)
+          |> Option.value ~default:Runtime.Null
+        in
+        emit { cmd = Yield value; loc = x.loc };
+        []
   in
+  List.iter
+    (fun (x : Ast.top_stmt) ->
+      let breaks =
+        codegen_stmt None (Ast.top_stmt_to_stmt x) (Hashtbl.create 0)
+      in
+      if List.length breaks <> 0 then failwith "unreachable" else ())
+    root.stmts;
   failwith "Todo"
