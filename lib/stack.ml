@@ -1,4 +1,4 @@
-type location = Register of int | Argument of int | Void
+type location = Register of int | Argument of int | Void | Global of int
 
 exception InvalidLocation of location
 exception WriteToVoid
@@ -15,6 +15,7 @@ type frame = {
 }
 
 and stack = {
+  globals : Value.value array;
   top : frame;
   bot : frame;
   yielder : (stack * int) option;
@@ -25,30 +26,34 @@ let string_of_location loc =
   match loc with
   | Register x -> "r" ^ string_of_int x
   | Argument x -> "a" ^ string_of_int x
+  | Global x -> "g" ^ string_of_int x
   | Void -> "void"
 
-let location_valid (f : stack) loc =
-  let f = f.top in
+let location_valid (s : stack) loc =
+  let f = s.top in
   let valid =
     match loc with
+    | Global x -> x >= 0 && x < Array.length s.globals
     | Register x -> x >= 0 && x < Array.length f.locals
     | Argument x -> x >= 0 && x < Array.length f.args
     | Void -> true
   in
   if not valid then raise (InvalidLocation loc) else ()
 
-let store (f : stack) loc v =
-  location_valid f loc;
-  let f = f.top in
+let store (s : stack) loc v =
+  location_valid s loc;
+  let f = s.top in
   match loc with
+  | Global x -> s.globals.(x) <- v
   | Register x -> f.locals.(x) <- v
   | Argument x -> f.args.(x) <- v
   | Void -> ()
 
-let load (f : stack) loc =
-  location_valid f loc;
-  let f = f.top in
+let load (s : stack) loc =
+  location_valid s loc;
+  let f = s.top in
   match loc with
+  | Global x -> s.globals.(x)
   | Register x -> f.locals.(x)
   | Argument x -> f.args.(x)
   | Void -> raise WriteToVoid

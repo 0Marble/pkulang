@@ -1,14 +1,14 @@
 open Alcotest
 open Pkulang
 
-let interpret cmds n =
+let interpret ?(globals_cnt : int = 0) cmds n =
   let r =
     Runtime.create ""
       (cmds
       |> List.map (fun c : Runtime.command ->
              { cmd = c; loc = Location.Spot 0 })
       |> Array.of_list)
-      0
+      0 globals_cnt
   in
   let rec complete r n =
     if Runtime.finished r then r
@@ -128,6 +128,43 @@ let goto () =
        ]
        10)
 
+let globals () =
+  check string "Globals" "10, 20\n10, 20\n30, 40\n"
+    (interpret
+       [
+         Assign (Global 0, Number 10);
+         Assign (Global 1, Number 20);
+         Builtin ([| Location (Global 0); Location (Global 1) |], "println");
+         Call (Void, [||], Relative 3);
+         Builtin ([| Location (Global 0); Location (Global 1) |], "println");
+         Halt;
+         Builtin ([| Location (Global 0); Location (Global 1) |], "println");
+         Assign (Global 0, Number 30);
+         Assign (Global 1, Number 40);
+         Ret Null;
+       ]
+       100 ~globals_cnt:2);
+  check string "Globals in coroutines" "10, 20\n10, 20\n30, 40\n"
+    (interpret
+       [
+         Alloca 1;
+         Assign (Global 0, Number 10);
+         Assign (Global 1, Number 20);
+         Builtin ([| Location (Global 0); Location (Global 1) |], "println");
+         Create (Register 0, [||], Relative 5);
+         Resume (Void, Location (Register 0), Relative 3);
+         Builtin ([| Location (Global 0); Location (Global 1) |], "println");
+         Halt;
+         Trap;
+         Builtin ([| Location (Global 0); Location (Global 1) |], "println");
+         Assign (Global 0, Number 30);
+         Assign (Global 1, Number 40);
+         Yield Null;
+         Trap;
+       ]
+       100 ~globals_cnt:2);
+  ()
+
 let fib () =
   check string "Fib(20)" "6765"
     (interpret
@@ -161,6 +198,7 @@ let () =
           ("call", `Quick, call);
           ("null", `Quick, null);
           ("goto", `Quick, goto);
+          ("globals", `Quick, globals);
         ] );
       ("programs", [ ("fib", `Quick, fib) ]);
     ]

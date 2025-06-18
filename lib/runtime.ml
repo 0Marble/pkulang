@@ -45,6 +45,7 @@ type command_kind =
 type command = { cmd : command_kind; loc : Location.location }
 
 and runtime = {
+  globals : Value.value array;
   stack : Stack.stack;
   heap : Heap.heap;
   code : command array;
@@ -63,6 +64,7 @@ let string_of_operand_dyn r (f : Stack.frame) op =
   | Location x ->
       let v =
         match x with
+        | Global i -> r.globals.(i)
         | Register i -> f.locals.(i)
         | Argument i -> f.args.(i)
         | Void -> raise Stack.WriteToVoid
@@ -194,7 +196,8 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
   if not mark then Printf.sprintf "[%5d] %s" idx s
   else Printf.sprintf "[>%4d] %s" idx s
 
-let create source code main =
+let create source code main globals_cnt =
+  let globals = Array.init globals_cnt (fun _ : Value.value -> Number 0) in
   let rec (frame : Stack.frame) =
     {
       start = main;
@@ -206,19 +209,22 @@ let create source code main =
       stack;
     }
   and (stack : Stack.stack) =
-    { top = frame; bot = frame; yielder = None; ptr = Value.null }
+    { top = frame; bot = frame; yielder = None; ptr = Value.null; globals }
+  and (rt : runtime) =
+    {
+      globals;
+      heap = Heap.create ();
+      gc_on = true;
+      stdout = "";
+      stdin = "";
+      stack;
+      code;
+      source;
+      last_instrs = Queue.create ();
+      keep_instrs = 20;
+    }
   in
-  {
-    heap = Heap.create ();
-    gc_on = true;
-    stdout = "";
-    stdin = "";
-    stack;
-    code;
-    source;
-    last_instrs = Queue.create ();
-    keep_instrs = 20;
-  }
+  rt
 
 let trace ?(flags = 15) r =
   prerr_string "================TRACE START================\n";
@@ -490,7 +496,13 @@ let step r =
             ip = fn;
           }
         and stack =
-          { top = frame; bot = frame; yielder = None; ptr = Value.null }
+          {
+            top = frame;
+            bot = frame;
+            yielder = None;
+            ptr = Value.null;
+            globals = r.globals;
+          }
         in
         let h, ptr = Heap.alloc r.heap in
         Stack.store r.stack dest ptr;

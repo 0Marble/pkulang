@@ -8,7 +8,7 @@ let interpret cmds n =
       |> List.map (fun c : Runtime.command ->
              { cmd = c; loc = Location.Spot 0 })
       |> Array.of_list)
-      0
+      0 0
   in
   let rec complete r n =
     if Runtime.finished r then r
