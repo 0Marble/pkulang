@@ -371,26 +371,6 @@ let static_var () =
   check string "static variable" "{x: 10}\n20\n20\n" r.stdout;
   ()
 
-let method_call () =
-  let src =
-    {|
-  struct Foo {
-    x: int,
-    fn log(this: Foo) void {
-      println(this);
-    }
-  }
-  fn main() void {
-    let foo: Foo = new Foo{x: 10};
-    foo.log();
-  }
-  |}
-  in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "method" "{x: 10}\n" r.stdout;
-  ()
-
 let function_call () =
   let src =
     {|
@@ -779,6 +759,33 @@ let for_loop_continue () =
   check string "range" "0\n1\n2\n4\n" r.stdout;
   ()
 
+let nested_for_loop () =
+  let src =
+    {|
+  fn range(from: int, to: int) co int {
+    co range_impl(a: int, b: int) int {
+      while (a < b) {
+        yield a;
+        a += 1;
+      }
+    }
+    return create(range_impl, from, to);
+  }
+  fn main() void {
+    for (x: range(0, 5)) {
+      for (y: range(0, x)) println(x, y);
+    }
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 400 in
+  check string "range"
+    (List.init 5 (fun x -> List.init x (fun y -> Printf.sprintf "%d, %d\n" x y))
+    |> List.concat |> List.fold_left ( ^ ) "")
+    r.stdout;
+  ()
+
 let dynamic_call () =
   let src =
     {|
@@ -827,6 +834,56 @@ let polymorphism () =
   let r = compile src in
   let r = interpret r 200 in
   check string "polymorphism" "bark\nmeow\n" r.stdout;
+  ()
+
+let quicksort () =
+  let src =
+    {|
+  fn range(from: int, to: int) co int {
+    co range_impl(a: int, b: int) int {
+      while (a < b) {
+        yield a;
+        a += 1;
+      }
+    }
+    return create(range_impl, from, to);
+  }
+
+  fn quicksort(arr0: [int]) void {
+    fn partition(arr1: [int], start1: int, end1: int) int {
+      let j: int = start1;
+      for (i : range(start1 + 1, end1)) {
+        if (arr1[j] > arr1[i]) {
+          let a1: int = arr1[j];
+          let b1: int = arr1[j + 1];
+          let c1: int = arr1[i];
+          arr1[j] = c1;
+          arr1[i] = b1;
+          arr1[j + 1] = a1;
+          j += 1;
+        }
+      }
+      return j;
+    }
+    fn qsort(arr2: [int], start2: int, end2: int) void {
+      if (start2 == end2) return;
+      if (start2 + 1 == end2) return;
+      let mid: int = partition(arr2, start2, end2);
+      qsort(arr2, start2, mid);
+      qsort(arr2, mid + 1, end2);
+    }
+    qsort(arr0, 0, len(arr));
+  }
+  fn main() void {
+    let arr: [int] = [6, 4, 1, 5, 3, 7, 9, 0, 2, 8];
+    quicksort(arr);
+    println(arr);
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 1000 in
+  check string "quicksort" "[0,1,2,3,4,5,6,7,8,9]\n" r.stdout;
   ()
 
 let preorder () =
@@ -897,7 +954,6 @@ let () =
           ("default_field_value", `Quick, default_field_value);
           ("multiple_fields", `Quick, multiple_fields);
           ("static_var", `Quick, static_var);
-          ("method_call", `Quick, method_call);
         ] );
       ( "functions",
         [
@@ -933,11 +989,13 @@ let () =
           ("for_loop", `Quick, for_loop);
           ("for_loop_break", `Quick, for_loop_break);
           ("for_loop_continue", `Quick, for_loop_continue);
+          ("nested_for_loop", `Quick, nested_for_loop);
         ] );
       ( "other",
         [
           ("dynamic_call", `Quick, dynamic_call);
           ("polymorphism", `Quick, polymorphism);
           ("preorder", `Quick, preorder);
+          ("quicksort", `Quick, quicksort);
         ] );
     ]

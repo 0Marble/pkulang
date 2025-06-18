@@ -22,13 +22,6 @@ let codegen (src : string) (fn_list : Ast.node list)
     fn_list;
 
   let (builtins_table : (string, int) Hashtbl.t) = Hashtbl.create 64 in
-  Hashtbl.add builtins_table "println" !ptr;
-  emit
-    {
-      cmd = Builtin ([| Location (Argument 0) |], "println");
-      loc = Location.Spot 0;
-    };
-  emit { cmd = Ret Null; loc = Location.Spot 0 };
   Hashtbl.add builtins_table "len" !ptr;
   emit { cmd = Size (Argument 0, Location (Argument 0)); loc = Location.Spot 0 };
   emit { cmd = Ret (Location (Argument 0)); loc = Location.Spot 0 };
@@ -141,14 +134,24 @@ let codegen (src : string) (fn_list : Ast.node list)
         | TokNot -> emit { cmd = Sub (reg, Number 1, sub); loc = x.loc }
         | _ -> failwith "Error: unsupported unop");
         Location reg
-    | CallExpr x ->
-        let fptr = codegen_expr x.fn registers |> op_to_jump in
-        let res = allocate_reg x.node_idx registers in
+    | CallExpr x -> (
         let args =
           List.map (fun a -> codegen_expr a registers) x.params |> Array.of_list
         in
-        emit { cmd = Call (res, args, fptr); loc = x.loc };
-        Location res
+        match x.fn with
+        | VarExpr _
+          when get_definition (Ast.expr_to_node x.fn) = `Builtin "println" ->
+            emit { cmd = Builtin (args, "println"); loc = Location.Spot 0 };
+            Null
+        | VarExpr _
+          when get_definition (Ast.expr_to_node x.fn) = `Builtin "print" ->
+            emit { cmd = Builtin (args, "print"); loc = Location.Spot 0 };
+            Null
+        | _ ->
+            let fptr = codegen_expr x.fn registers |> op_to_jump in
+            let res = allocate_reg x.node_idx registers in
+            emit { cmd = Call (res, args, fptr); loc = x.loc };
+            Location res)
     | IndexExpr x ->
         let arr = codegen_expr x.arr registers in
         let reg = allocate_reg x.node_idx registers in
