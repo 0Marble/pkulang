@@ -59,8 +59,8 @@ let compile_and_run ?(stdin : string option = None) src n =
         match !stdin with
         | Some (l :: ls) ->
             stdin := Some ls;
-            l
-        | _ -> failwith "No stdin")
+            Some l
+        | _ -> None)
       (fun s ->
         prerr_string s;
         stdout := !stdout ^ s)

@@ -1,16 +1,23 @@
 open Alcotest
 open Pkulang
 
-let interpret ?(globals_cnt = 0) cmds n =
+let interpret ?(globals_cnt = 0) ?(stdin = None) cmds n =
   let stdout = ref "" in
+  let stdin = Option.map (String.split_on_char '\n') stdin |> ref in
+  let stdin () =
+    match !stdin with
+    | Some (l :: ls) ->
+        stdin := Some ls;
+        Some l
+    | _ -> None
+  in
   let r =
     Runtime.create ""
       (cmds
       |> List.map (fun c : Runtime.command ->
              { cmd = c; loc = Location.Spot 0 })
       |> Array.of_list)
-      0 globals_cnt
-      (fun () -> failwith "no stdin")
+      0 globals_cnt stdin
       (fun (s : string) ->
         prerr_string s;
         stdout := !stdout ^ s)
@@ -37,6 +44,31 @@ let print () =
          Halt;
        ]
        10)
+
+let read_line () =
+  check string "scan line" "10\n"
+    (interpret ~stdin:(Some "10")
+       [
+         Alloca 1;
+         New (Register 0);
+         Builtin ([| Location (Register 0) |], "read_line");
+         Builtin ([| Location (Register 0) |], "println");
+         Halt;
+       ]
+       10);
+  check string "read all lines" "10\n20\n30\n"
+    (interpret ~stdin:(Some "10\n20\n30")
+       [
+         Alloca 1;
+         New (Register 0);
+         Builtin ([| Location (Register 0) |], "read_line");
+         GotoIfZero (Location (Register 0), Relative 3);
+         Builtin ([| Location (Register 0) |], "println");
+         Goto (Relative (-3));
+         Halt;
+       ]
+       100);
+  ()
 
 let null () =
   check string "null" "10"
@@ -201,6 +233,7 @@ let () =
         [
           ("nothing", `Quick, nothing);
           ("print", `Quick, print);
+          ("read_line", `Quick, read_line);
           ("call", `Quick, call);
           ("null", `Quick, null);
           ("goto", `Quick, goto);
