@@ -49,8 +49,8 @@ and runtime = {
   stack : Stack.stack;
   heap : Heap.heap;
   code : command array;
-  stdin : string;
-  stdout : string;
+  stdin : unit -> string;
+  stdout : string -> unit;
   source : string;
   gc_on : bool;
   (* tracing *)
@@ -196,7 +196,7 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
   if not mark then Printf.sprintf "[%5d] %s" idx s
   else Printf.sprintf "[>%4d] %s" idx s
 
-let create source code main globals_cnt =
+let create source code main globals_cnt stdin stdout =
   let globals = Array.init globals_cnt (fun _ : Value.value -> Number 0) in
   let rec (frame : Stack.frame) =
     {
@@ -215,8 +215,8 @@ let create source code main globals_cnt =
       globals;
       heap = Heap.create ();
       gc_on = true;
-      stdout = "";
-      stdin = "";
+      stdout;
+      stdin;
       stack;
       code;
       source;
@@ -414,11 +414,12 @@ let step r =
             ("", 0) args
         in
         if x = "print" then (
-          prerr_string s;
-          next { r with stdout = r.stdout ^ s })
+          r.stdout s;
+          next r)
         else (
-          prerr_endline s;
-          next { r with stdout = r.stdout ^ s ^ "\n" })
+          r.stdout (s ^ "\n");
+          next r)
+    | Builtin ([||], "read_line") -> failwith "Todo"
     | Builtin (_, _) -> failwith "Unknown builtin"
     | Goto tgt ->
         let ip = get_ip r tgt in

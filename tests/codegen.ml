@@ -48,25 +48,36 @@ let dummy_get_definition map (node : Ast.node) :
       |> Option.value ~default:(`Builtin x.name)
   | _ -> failwith "Error: not a node with definition"
 
-let compile src =
+let compile_and_run ?(stdin : string option = None) src n =
   let root = Parser.parse_root src in
   let map, fns = scan_root src root in
-  let r = Codegen.codegen src fns (dummy_get_definition map) root in
+  let stdout = ref "" in
+  let stdin = Option.map (String.split_on_char '\n') stdin |> ref in
+  let r =
+    Codegen.codegen src fns (dummy_get_definition map) root
+      (fun () ->
+        match !stdin with
+        | Some (l :: ls) ->
+            stdin := Some ls;
+            l
+        | _ -> failwith "No stdin")
+      (fun s ->
+        prerr_string s;
+        stdout := !stdout ^ s)
+  in
   Printf.eprintf "\n%s\n" src;
   Array.iteri
     (fun i (cmd : Runtime.command) ->
       Printf.eprintf "%s\n"
         (Runtime.string_of_cmd ~mark:(i = r.stack.top.ip) i cmd.cmd))
     r.code;
-  r
-
-let interpret r n =
   let rec complete r n =
     if Runtime.finished r then r
     else if n = 0 then failwith "Too many steps!"
     else complete (Runtime.step r) (n - 1)
   in
-  complete r n
+  let _ = complete r n in
+  !stdout
 
 let hello_world () =
   let src =
@@ -76,9 +87,8 @@ let hello_world () =
       }
       |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "hello world" "Hello World!\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "hello world" "Hello World!\n" s;
   ()
 
 let print_variable () =
@@ -90,9 +100,8 @@ let print_variable () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "print variable" "10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "print variable" "10\n" s;
   ()
 
 let assign_variable () =
@@ -105,9 +114,8 @@ let assign_variable () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "modify variable" "20\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "modify variable" "20\n" s;
   ()
 
 let multiple_vars () =
@@ -121,9 +129,8 @@ let multiple_vars () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "multiple variables" "10\n20\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "multiple variables" "10\n20\n" s;
   ()
 
 let global_variable () =
@@ -133,9 +140,8 @@ let global_variable () =
     println(x);
   }
   |} in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "print variable" "10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "print variable" "10\n" s;
   ()
 
 let global_variable_complex_init () =
@@ -150,9 +156,8 @@ let global_variable_complex_init () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "print variable" "10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "print variable" "10\n" s;
   ()
 
 let add_expression () =
@@ -165,9 +170,8 @@ let add_expression () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "add variables" "30\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "add variables" "30\n" s;
   ()
 
 let increment_expr () =
@@ -180,9 +184,8 @@ let increment_expr () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "increment" "11\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "increment" "11\n" s;
   ()
 
 let negate_expr () =
@@ -194,9 +197,8 @@ let negate_expr () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "negate" "-10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "negate" "-10\n" s;
   ()
 
 let gt_expr () =
@@ -208,9 +210,8 @@ let gt_expr () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "gt" "1\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "gt" "1\n" s;
   ()
 
 let eql_expr () =
@@ -222,9 +223,8 @@ let eql_expr () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "eql" "1\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "eql" "1\n" s;
   ()
 
 let print_array () =
@@ -236,9 +236,8 @@ let print_array () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "print array" "[10,20,30]\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "print array" "[10,20,30]\n" s;
   ()
 
 let array_index_get () =
@@ -250,9 +249,8 @@ let array_index_get () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "index get" "10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "index get" "10\n" s;
   ()
 
 let array_index_set () =
@@ -265,9 +263,8 @@ let array_index_set () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "index set" "[40,20,30]\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "index set" "[40,20,30]\n" s;
   ()
 
 let array_length () =
@@ -279,9 +276,8 @@ let array_length () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "array len" "3\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "array len" "3\n" s;
   ()
 
 let array_multidimensional () =
@@ -302,8 +298,7 @@ let array_multidimensional () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
+  let s = compile_and_run src 100 in
   check string "multidimensional array"
     "[[10,20,30],[40,50,60]]\n\
      2\n\
@@ -313,7 +308,7 @@ let array_multidimensional () =
      10\n\
      [[100,20,30],[40,50,60]]\n\
      [[200,20,30],[40,50,60]]\n"
-    r.stdout;
+    s;
   ()
 
 let print_string () =
@@ -322,9 +317,8 @@ let print_string () =
     println("foo");
   }
   |} in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "print string" "foo\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "print string" "foo\n" s;
   ()
 
 let string_index () =
@@ -338,9 +332,8 @@ let string_index () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "string index" "102\nFoo\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "string index" "102\nFoo\n" s;
   ()
 
 let string_concat () =
@@ -349,9 +342,8 @@ let string_concat () =
     println("foo" + "bar");
   }
   |} in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "string index" "foobar\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "string index" "foobar\n" s;
   ()
 
 let print_struct () =
@@ -366,9 +358,8 @@ let print_struct () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "create object" "{x: 10}\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "create object" "{x: 10}\n" s;
   ()
 
 let default_field_value () =
@@ -383,9 +374,8 @@ let default_field_value () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "default field value" "{x: 10}\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "default field value" "{x: 10}\n" s;
   ()
 
 let multiple_fields () =
@@ -401,9 +391,8 @@ let multiple_fields () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "multiple fields" "{x: 10, y: 20}\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "multiple fields" "{x: 10, y: 20}\n" s;
   ()
 
 let static_var () =
@@ -421,9 +410,8 @@ let static_var () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "static variable" "{x: 10}\n20\n20\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "static variable" "{x: 10}\n20\n20\n" s;
   ()
 
 let method_call () =
@@ -440,9 +428,8 @@ let method_call () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "method call" "{x: 10}\n{x: 10}\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "method call" "{x: 10}\n{x: 10}\n" s;
   ()
 
 let function_call () =
@@ -456,9 +443,8 @@ let function_call () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "function call" "Foo!\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "function call" "Foo!\n" s;
   ()
 
 let function_args () =
@@ -472,9 +458,8 @@ let function_args () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "function call" "10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "function call" "10\n" s;
   ()
 
 let function_return () =
@@ -488,9 +473,8 @@ let function_return () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "return" "30\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "return" "30\n" s;
   ()
 
 let nested_calls () =
@@ -509,9 +493,8 @@ let nested_calls () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "nested" ">foo\nbar\nfoo>\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "nested" ">foo\nbar\nfoo>\n" s;
   ()
 
 let recursion () =
@@ -526,9 +509,8 @@ let recursion () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 10000 in
-  check string "nested" "55\n" r.stdout;
+  let s = compile_and_run src 10000 in
+  check string "nested" "55\n" s;
   ()
 
 let condition () =
@@ -537,9 +519,8 @@ let condition () =
     if (1) println(1);
   }
   |} in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "condtions" "1\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "condtions" "1\n" s;
   ()
 
 let if_else () =
@@ -551,9 +532,8 @@ let if_else () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "if else" "2\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "if else" "2\n" s;
   ()
 
 let nested_if () =
@@ -569,9 +549,8 @@ let nested_if () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "nested if" "1\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "nested if" "1\n" s;
   ()
 
 let while_loop () =
@@ -587,9 +566,8 @@ let while_loop () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "while loop" "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "while loop" "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n" s;
   ()
 
 let while_break () =
@@ -606,9 +584,8 @@ let while_break () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 100 in
-  check string "while loop" "0\n1\n2\n3\n3\n" r.stdout;
+  let s = compile_and_run src 100 in
+  check string "while loop" "0\n1\n2\n3\n3\n" s;
   ()
 
 let while_continue () =
@@ -624,9 +601,8 @@ let while_continue () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "while loop" "1\n2\n4\n5\n6\n7\n8\n9\n10\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "while loop" "1\n2\n4\n5\n6\n7\n8\n9\n10\n" s;
   ()
 
 let while_nested_break () =
@@ -647,9 +623,8 @@ let while_nested_break () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "while loop" "3\n3\n3\n3\n3\n5\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "while loop" "3\n3\n3\n3\n3\n5\n" s;
   ()
 
 let coroutine_create () =
@@ -666,9 +641,8 @@ let coroutine_create () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "create" "main\nfoo\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "create" "main\nfoo\n" s;
   ()
 
 let yield_vals () =
@@ -685,9 +659,8 @@ let yield_vals () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "create" "10\n20\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "create" "10\n20\n" s;
   ()
 
 let if_resume () =
@@ -705,9 +678,8 @@ let if_resume () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "create" "10\n20\ndone\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "create" "10\n20\ndone\n" s;
   ()
 
 let coro_range () =
@@ -728,9 +700,8 @@ let coro_range () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "range" "0\n1\n2\n3\n4\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "range" "0\n1\n2\n3\n4\n" s;
   ()
 
 let return_coro () =
@@ -754,9 +725,8 @@ let return_coro () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "range" "0\n1\n2\n3\n4\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "range" "0\n1\n2\n3\n4\n" s;
   ()
 
 let for_loop () =
@@ -778,9 +748,8 @@ let for_loop () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "range" "0\n1\n2\n3\n4\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "range" "0\n1\n2\n3\n4\n" s;
   ()
 
 let for_loop_break () =
@@ -803,9 +772,8 @@ let for_loop_break () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "range" "0\n1\n2\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "range" "0\n1\n2\n" s;
   ()
 
 let for_loop_continue () =
@@ -828,9 +796,8 @@ let for_loop_continue () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "range" "0\n1\n2\n4\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "range" "0\n1\n2\n4\n" s;
   ()
 
 let nested_for_loop () =
@@ -852,12 +819,11 @@ let nested_for_loop () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 400 in
+  let s = compile_and_run src 400 in
   check string "range"
     (List.init 5 (fun x -> List.init x (fun y -> Printf.sprintf "%d, %d\n" x y))
     |> List.concat |> List.fold_left ( ^ ) "")
-    r.stdout;
+    s;
   ()
 
 let dynamic_call () =
@@ -878,9 +844,8 @@ let dynamic_call () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "dynamic call" "foo\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "dynamic call" "foo\n" s;
   ()
 
 let polymorphism () =
@@ -905,9 +870,8 @@ let polymorphism () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "polymorphism" "bark\nmeow\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "polymorphism" "bark\nmeow\n" s;
   ()
 
 let quicksort () =
@@ -955,9 +919,8 @@ let quicksort () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 1000 in
-  check string "quicksort" "[0,1,2,3,4,5,6,7,8,9]\n" r.stdout;
+  let s = compile_and_run src 1000 in
+  check string "quicksort" "[0,1,2,3,4,5,6,7,8,9]\n" s;
   ()
 
 let preorder () =
@@ -990,9 +953,8 @@ let preorder () =
   }
   |}
   in
-  let r = compile src in
-  let r = interpret r 200 in
-  check string "preorder" "0\n1\n2\n3\n" r.stdout;
+  let s = compile_and_run src 200 in
+  check string "preorder" "0\n1\n2\n3\n" s;
   ()
 
 let () =
