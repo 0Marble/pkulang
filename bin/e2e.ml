@@ -1,54 +1,89 @@
 open Pkulang
+module CharMap = Map.Make (Char)
 
-let find_test_files dir =
-  let files_in_dir = Sys.readdir dir in
-  let get_test files file =
-    let expected_name = file ^ ".expected" in
-    let stdin_name = file ^ ".stdin" in
-    let expected =
-      Array.find_opt (fun x -> x = expected_name) files
-      |> Option.map (fun x -> Filename.concat dir x)
+let parse_test file_path =
+  let parse_test' file_path =
+    let chan = In_channel.open_text file_path in
+    let src = In_channel.input_all chan in
+    let stdin = ref "" in
+    let stdout = ref "" in
+    let source = ref "" in
+    let escape_map =
+      CharMap.of_list [ ('n', '\n'); ('t', '\t'); ('\\', '\\'); ('"', '"') ]
     in
-    let stdin =
-      Array.find_opt (fun x -> x = stdin_name) files
-      |> Option.map (fun x -> Filename.concat dir x)
+    let unescape s =
+      let s = List.fold_left ( ^ ) "" s in
+      assert (String.starts_with ~prefix:"\"" s);
+      assert (String.ends_with ~suffix:"\"" s);
+      let len = String.length s in
+      assert (len >= 2);
+      let s = String.sub s 1 (len - 2) in
+      String.fold_left
+        (fun (acc, state) c ->
+          match (c, state) with
+          | '\\', 0 -> (acc, 1)
+          | _, 0 -> (Printf.sprintf "%s%c" acc c, 0)
+          | _, 1 -> (
+              match CharMap.find_opt c escape_map with
+              | Some c -> (Printf.sprintf "%s%c" acc c, 0)
+              | None -> failwith "invalid escape sequence")
+          | _ -> failwith "unreachable")
+        ("", 0) s
+      |> fst
     in
-    (Filename.concat dir file, expected, stdin)
+    String.split_on_char '\n' src
+    |> List.iteri (fun i line ->
+           let trimmed = String.trim line in
+           try
+             match String.split_on_char ':' trimmed with
+             | "% stdin" :: s -> stdin := !stdin ^ unescape s
+             | "% stdout" :: s -> stdout := !stdout ^ unescape s
+             | _ -> source := !source ^ "\n" ^ line
+           with err ->
+             Printf.eprintf "[%s:%d] ERROR: %s\n" file_path i
+               (Printexc.to_string err);
+             Printexc.print_backtrace stderr);
+    (file_path, !source, !stdout, !stdin)
   in
-  Array.to_list files_in_dir
-  |> List.filter_map (fun file ->
-         if
-           Filename.extension file = ".expected"
-           || Filename.extension file = ".stdin"
-         then None
-         else
-           let file, expected, stdin = get_test files_in_dir file in
-           match expected with
-           | Some expected -> Some (file, expected, stdin)
-           | None ->
-               Printf.eprintf "[WARN] no .expected file for `%s'\n" file;
-               None)
+  if Filename.extension file_path <> ".co" then None
+  else Some (parse_test' file_path)
 
-let compile_and_run file : string =
-  let chan = In_channel.open_text file in
-  let src = In_channel.input_all chan in
-  let _ = Parser.parse_root src in
+let compile_and_run src stdin : string =
+  let stdout = ref "" in
+  let stdin = String.split_on_char '\n' stdin |> ref in
+  let root = Parser.parse_root src in
   let _ = failwith "Todo: implement symbol table" in
   let _ = failwith "Todo: implement type checking" in
-  let _ = failwith "Todo: implement codegen" in
-  let _ = failwith "Todo: run the generated code" in
-  failwith "Todo: return back stdout"
+  let r =
+    Codegen.codegen src (failwith "Todo: fn list")
+      (failwith "Todo: get_definiton")
+      root
+      (fun () ->
+        match !stdin with
+        | l :: ls ->
+            stdin := ls;
+            Some l
+        | [] -> None)
+      (fun s -> stdout := !stdout ^ s)
+  in
+  let rec complete r =
+    if Runtime.finished r then r else Runtime.step r |> complete
+  in
+  let _ = complete r in
+  !stdout
 
 let () =
   Printexc.record_backtrace true;
-  let tests = find_test_files "./examples" in
+  let tests =
+    Sys.readdir "./examples" |> Array.to_list
+    |> List.map (Filename.concat "./examples/")
+    |> List.filter_map parse_test
+  in
   let failed_tests =
     tests
-    |> List.filter_map (fun (file, expected, _) : string option ->
+    |> List.filter_map (fun (file, source, expected, stdin) : string option ->
            try
-             let stdout = compile_and_run file in
-             let chan = In_channel.open_text expected in
-             let expected = In_channel.input_all chan in
+             let stdout = compile_and_run source stdin in
 
              if stdout <> expected then (
                let stdout = String.escaped stdout in
