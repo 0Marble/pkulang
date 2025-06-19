@@ -49,7 +49,7 @@ and runtime = {
   stack : Stack.stack;
   heap : Heap.heap;
   code : command array;
-  stdin : unit -> string;
+  stdin : unit -> string option;
   stdout : string -> unit;
   source : string;
   gc_on : bool;
@@ -419,7 +419,18 @@ let step r =
         else (
           r.stdout (s ^ "\n");
           next r)
-    | Builtin ([||], "read_line") -> failwith "Todo"
+    | Builtin ([| dest |], "read_line") ->
+        let line = r.stdin () in
+        let loc =
+          match dest with
+          | Location l -> l
+          | _ -> failwith "Expected a location"
+        in
+        let ptr = Stack.load r.stack loc in
+        (match line with
+        | Some line -> Heap.load_string_literal r.heap ptr line
+        | None -> Stack.store r.stack loc Value.null);
+        next r
     | Builtin (_, _) -> failwith "Unknown builtin"
     | Goto tgt ->
         let ip = get_ip r tgt in

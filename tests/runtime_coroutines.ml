@@ -10,7 +10,7 @@ let interpret ?(globals_cnt = 0) cmds n =
              { cmd = c; loc = Location.Spot 0 })
       |> Array.of_list)
       0 globals_cnt
-      (fun () -> failwith "no stdin")
+      (fun () -> None)
       (fun (s : string) ->
         prerr_string s;
         stdout := !stdout ^ s)

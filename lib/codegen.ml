@@ -1,7 +1,7 @@
 let codegen (src : string) (fn_list : Ast.node list)
     (get_definition : Ast.node -> [ `Node of Ast.node | `Builtin of string ])
-    (root : Ast.root) (stdin : unit -> string) (stdout : string -> unit) :
-    Runtime.runtime =
+    (root : Ast.root) (stdin : unit -> string option) (stdout : string -> unit)
+    : Runtime.runtime =
   let cmds =
     Array.init 65536 (fun _ ->
         ({ cmd = Runtime.Trap; loc = Location.Spot 0 } : Runtime.command))
