@@ -1,3 +1,5 @@
+module CharMap = Map.Make (Char)
+
 type token_kind =
   | TokNumber
   | TokIdent
@@ -145,7 +147,14 @@ let tok_list_to_str toks =
        None
   |> Option.value ~default:""
 
-type state = Normal | InIdent | InComment | InNumber | InString | Other
+type state =
+  | Normal
+  | InIdent
+  | InComment
+  | InNumber
+  | InString
+  | InEscape
+  | Other
 
 type builder = {
   src : string;
@@ -171,13 +180,31 @@ let tokenize src : token list =
   let cur_str b = String.sub b.src b.start (b.loc - b.start) in
 
   let emit_tok kind b =
-    {
-      b with
-      toks =
-        { kind; loc = Location.Range (b.start, b.loc); str = cur_str b }
-        :: b.toks;
-      state = Normal;
-    }
+    let escape_map =
+      CharMap.of_list [ ('n', '\n'); ('t', '\t'); ('\\', '\\'); ('"', '"') ]
+    in
+    let loc = Location.Range (b.start, b.loc) in
+    let str =
+      match kind with
+      | TokString ->
+          String.fold_left
+            (fun (acc, state) c ->
+              match (c, state) with
+              | '\\', 0 -> (acc, 1)
+              | _, 0 -> (Printf.sprintf "%s%c" acc c, 0)
+              | _, 1 -> (
+                  match CharMap.find_opt c escape_map with
+                  | Some c -> (Printf.sprintf "%s%c" acc c, 0)
+                  | None ->
+                      Error.fail_at_spot "Unrecognized escape sequence" b.src
+                        loc (Error.Error Unknown))
+              | _ -> failwith "unreachable")
+            ("", 0) (cur_str b)
+          |> fst
+      | _ -> cur_str b
+    in
+    let t = { loc; kind; str } in
+    { b with toks = t :: b.toks; state = Normal }
   in
 
   let step b = { b with loc = b.loc + 1 } in
@@ -203,6 +230,8 @@ let tokenize src : token list =
     | _, InNumber -> add_char (emit_tok TokNumber b) c
     (* Strings *)
     | '\"', Normal -> step { b with start = b.loc + 1; state = InString }
+    | '\\', InString -> step { b with state = InEscape }
+    | _, InEscape -> step { b with state = InString }
     | '\"', InString -> step (emit_tok TokString b)
     | _, InString -> step b
     (* Symbols *)

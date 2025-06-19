@@ -50,6 +50,26 @@ let comment_check () =
     (run_tok "\"foo % bar\"");
   ()
 
+let check_escapes () =
+  check string "no escapes" "String(\"foo\")" (run_tok "\"foo\"");
+  check string "newline-post" "String(\"foo\n\")" (run_tok "\"foo\\n\"");
+  check string "tab-post" "String(\"foo\t\")" (run_tok "\"foo\\t\"");
+  check string "quote-post" "String(\"foo\"\")" (run_tok "\"foo\\\"\"");
+  check string "slash-post" "String(\"foo\\\")" (run_tok "\"foo\\\\\"");
+  check string "newline-empty" "String(\"\n\")" (run_tok "\"\\n\"");
+  check string "tab-empty" "String(\"\t\")" (run_tok "\"\\t\"");
+  check string "quote-empty" "String(\"\"\")" (run_tok "\"\\\"\"");
+  check string "slash-empty" "String(\"\\\")" (run_tok "\"\\\\\"");
+  check string "newline-pre" "String(\"\nfoo\")" (run_tok "\"\\nfoo\"");
+  check string "tab-pre" "String(\"\tfoo\")" (run_tok "\"\\tfoo\"");
+  check string "quote-pre" "String(\"\"foo\")" (run_tok "\"\\\"foo\"");
+  check string "slash-pre" "String(\"\\foo\")" (run_tok "\"\\\\foo\"");
+  check string "newline-around" "String(\"foo\nfoo\")" (run_tok "\"foo\\nfoo\"");
+  check string "tab-around" "String(\"foo\tfoo\")" (run_tok "\"foo\\tfoo\"");
+  check string "quote-around" "String(\"foo\"foo\")" (run_tok "\"foo\\\"foo\"");
+  check string "slash-around" "String(\"foo\\foo\")" (run_tok "\"foo\\\\foo\"");
+  ()
+
 let fib_example () =
   let src =
     {|
@@ -72,6 +92,7 @@ let () =
           ("number", `Quick, number_checks);
           ("symbols", `Quick, symbol_checks);
           ("strings", `Quick, strings_check);
+          ("escapes", `Quick, check_escapes);
         ] );
       ("example", [ ("fib", `Quick, fib_example) ]);
     ]
