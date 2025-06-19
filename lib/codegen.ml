@@ -31,6 +31,13 @@ let codegen (src : string) (fn_list : Ast.node list)
 
   create_builtin "len"
     [ Size (Argument 0, Location (Argument 0)); Ret (Location (Argument 0)) ];
+  create_builtin "read_line"
+    [
+      Alloca 1;
+      New (Register 0);
+      Builtin ([| Location (Register 0) |], "read_line");
+      Ret (Location (Register 0));
+    ];
 
   let (globals_table : (Ast.node, Stack.location) Hashtbl.t) =
     Hashtbl.create 64
@@ -147,11 +154,11 @@ let codegen (src : string) (fn_list : Ast.node list)
         match x.fn with
         | VarExpr _
           when get_definition (Ast.expr_to_node x.fn) = `Builtin "println" ->
-            emit { cmd = Builtin (args, "println"); loc = Location.Spot 0 };
+            emit { cmd = Builtin (args, "println"); loc = x.loc };
             Null
         | VarExpr _
           when get_definition (Ast.expr_to_node x.fn) = `Builtin "print" ->
-            emit { cmd = Builtin (args, "print"); loc = Location.Spot 0 };
+            emit { cmd = Builtin (args, "print"); loc = x.loc };
             Null
         | DotExpr y ->
             let applied_len = List.length x.params in
