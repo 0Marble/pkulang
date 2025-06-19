@@ -152,6 +152,25 @@ let codegen (src : string) (fn_list : Ast.node list)
           when get_definition (Ast.expr_to_node x.fn) = `Builtin "print" ->
             emit { cmd = Builtin (args, "print"); loc = Location.Spot 0 };
             Null
+        | DotExpr y ->
+            let applied_len = List.length x.params in
+            let expected_len =
+              match get_definition (DotExpr y) with
+              | `Node (FnDecl z) -> List.length z.args
+              | `Node (CoDecl z) -> List.length z.args
+              | _ -> failwith "Error: unspported function call"
+            in
+            let args =
+              if applied_len = expected_len then args
+              else if applied_len + 1 = expected_len then
+                let obj = codegen_expr y.obj registers in
+                Array.append [| obj |] args
+              else failwith "Error: unsupported argument count"
+            in
+            let fptr = codegen_expr x.fn registers |> op_to_jump in
+            let res = allocate_reg x.node_idx registers in
+            emit { cmd = Call (res, args, fptr); loc = x.loc };
+            Location res
         | _ ->
             let fptr = codegen_expr x.fn registers |> op_to_jump in
             let res = allocate_reg x.node_idx registers in

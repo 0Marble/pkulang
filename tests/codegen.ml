@@ -138,6 +138,23 @@ let global_variable () =
   check string "print variable" "10\n" r.stdout;
   ()
 
+let global_variable_complex_init () =
+  let src =
+    {|
+  fn foo() int {
+    return 10;
+  }
+  let x: int = foo();
+  fn main() void {
+    println(x);
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 100 in
+  check string "print variable" "10\n" r.stdout;
+  ()
+
 let add_expression () =
   let src =
     {|
@@ -407,6 +424,25 @@ let static_var () =
   let r = compile src in
   let r = interpret r 100 in
   check string "static variable" "{x: 10}\n20\n20\n" r.stdout;
+  ()
+
+let method_call () =
+  let src =
+    {|
+  struct Foo {
+    x: int,
+    fn log(self: Foo) void { println(self); }
+  }
+  fn main() void {
+    let foo: Foo = new Foo{x: 10};
+    foo.log();
+    Foo.log(foo);
+  }
+  |}
+  in
+  let r = compile src in
+  let r = interpret r 100 in
+  check string "method call" "{x: 10}\n{x: 10}\n" r.stdout;
   ()
 
 let function_call () =
@@ -969,6 +1005,7 @@ let () =
           ("assign_variable", `Quick, assign_variable);
           ("multiple_vars", `Quick, multiple_vars);
           ("global_variable", `Quick, global_variable);
+          ("global_variable_complex_init", `Quick, global_variable_complex_init);
         ] );
       ( "expressions",
         [
@@ -998,6 +1035,7 @@ let () =
           ("default_field_value", `Quick, default_field_value);
           ("multiple_fields", `Quick, multiple_fields);
           ("static_var", `Quick, static_var);
+          ("method_call", `Quick, method_call);
         ] );
       ( "functions",
         [
