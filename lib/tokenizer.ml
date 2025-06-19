@@ -145,9 +145,11 @@ let tok_list_to_str toks =
        None
   |> Option.value ~default:""
 
+type state = Normal | InIdent | InComment | InNumber | InString | Other
+
 type builder = {
   src : string;
-  state : int;
+  state : state;
   start : int;
   loc : int;
   toks : token list;
@@ -160,7 +162,7 @@ let tokenize src : token list =
       src;
       loc = 0;
       start = 0;
-      state = 0;
+      state = Normal;
       toks = [];
       finder = Trie.finder token_map;
     }
@@ -174,7 +176,7 @@ let tokenize src : token list =
       toks =
         { kind; loc = Location.Range (b.start, b.loc); str = cur_str b }
         :: b.toks;
-      state = 0;
+      state = Normal;
     }
   in
 
@@ -183,32 +185,37 @@ let tokenize src : token list =
   let rec add_char b c =
     match (c, b.state) with
     (* Whitespace *)
-    | (' ' | '\t' | '\n'), 0 -> step b
+    | (' ' | '\t' | '\n'), Normal -> step b
     (* Idents and keywords *)
-    | ('a' .. 'z' | 'A' .. 'Z' | '_'), 0 ->
-        step { b with start = b.loc; state = 1 }
-    | ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9'), 1 -> step b
-    | '%', 0 -> step { b with state = 7 }
-    | '\n', 7 -> step { b with state = 0 }
-    | _, 7 -> step { b with state = 7 }
-    | _, 1 -> (
+    | ('a' .. 'z' | 'A' .. 'Z' | '_'), Normal ->
+        step { b with start = b.loc; state = InIdent }
+    | ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9'), InIdent -> step b
+    | '%', Normal -> step { b with state = InComment }
+    | '\n', InComment -> step { b with state = Normal }
+    | _, InComment -> step b
+    | _, InIdent -> (
         match Trie.get_word token_map (cur_str b) with
         | Some kw -> add_char (emit_tok kw b) c
         | None -> add_char (emit_tok TokIdent b) c)
     (* Numbers *)
-    | '0' .. '9', 0 -> step { b with start = b.loc; state = 2 }
-    | '0' .. '9', 2 -> step b
-    | _, 2 -> add_char (emit_tok TokNumber b) c
+    | '0' .. '9', Normal -> step { b with start = b.loc; state = InNumber }
+    | '0' .. '9', InNumber -> step b
+    | _, InNumber -> add_char (emit_tok TokNumber b) c
     (* Strings *)
-    | '\"', 0 -> step { b with start = b.loc + 1; state = 5 }
-    | '\"', 5 -> step (emit_tok TokString b)
-    | _, 5 -> step b
+    | '\"', Normal -> step { b with start = b.loc + 1; state = InString }
+    | '\"', InString -> step (emit_tok TokString b)
+    | _, InString -> step b
     (* Symbols *)
-    | _, 0 ->
+    | _, Normal ->
         add_char
-          { b with finder = Trie.finder token_map; start = b.loc; state = 6 }
+          {
+            b with
+            finder = Trie.finder token_map;
+            start = b.loc;
+            state = Other;
+          }
           c
-    | c, 6 -> (
+    | c, Other -> (
         match Trie.push b.finder c with
         | Some next -> step { b with finder = next }
         | None -> (
@@ -217,10 +224,6 @@ let tokenize src : token list =
             | None ->
                 Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
                   (Error.Error Unknown)))
-    (* Error*)
-    | _ ->
-        Error.fail_at_spot "Invalid token" b.src (Location.Spot b.loc)
-          (Error.Error Unknown)
   in
 
   b.src ^ " "
