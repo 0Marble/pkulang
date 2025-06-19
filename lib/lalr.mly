@@ -253,7 +253,6 @@ dot_type:
 
 body_stmt:
     | block { (Block $1 : stmt) }
-    | let_stmt { (LetStmt $1 : stmt) }
     | continue_stmt { (ContinueStmt $1 : stmt) }
     | break_stmt { (BreakStmt $1 : stmt) }
     | return_stmt { (ReturnStmt $1 : stmt) }
