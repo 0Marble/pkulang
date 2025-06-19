@@ -2,6 +2,7 @@ open Alcotest
 open Pkulang
 
 let interpret cmds n =
+  let stdout = ref "" in
   let r =
     Runtime.create ""
       (cmds
@@ -9,23 +10,28 @@ let interpret cmds n =
              { cmd = c; loc = Location.Spot 0 })
       |> Array.of_list)
       0 0
+      (fun () -> failwith "no stdin")
+      (fun (s : string) ->
+        prerr_string s;
+        stdout := !stdout ^ s)
   in
   let rec complete r n =
     if Runtime.finished r then r
     else if n = 0 then failwith "Too many steps!"
     else complete (Runtime.step r) (n - 1)
   in
-  complete r n
+  let r = complete r n in
+  (r, !stdout)
 
 let dont_free_active () =
-  let r =
+  let r, _ =
     interpret [ DisableGc; Alloca 1; New (Register 0); ForceGc; Halt ] 100
   in
   check int "Memory used" 1 r.heap.used_size;
   check int "Max address" 1025 r.heap.max_address
 
 let force_gc () =
-  let r =
+  let r, _ =
     interpret
       [
         DisableGc;
@@ -48,7 +54,7 @@ let create_1_page_of_garbage () =
   (* so in total we need space to store 1024+4096 objects (first 1024 are unused) *)
   (* and after gc we will only keep one *)
   (* each object is a HeapNumber, storing the iteration (4096..=1) *)
-  let r =
+  let r, s =
     interpret
       [
         Alloca 2;
@@ -63,7 +69,7 @@ let create_1_page_of_garbage () =
       ]
       100000
   in
-  check string "The last object" "1" r.stdout;
+  check string "The last object" "1" s;
   check int "Memory used" 1 r.heap.used_size;
   check int "Max address" (1024 + 4096) r.heap.max_address
 
@@ -71,7 +77,7 @@ let a_bunch_of_garbage () =
   (* same setup as last test, but with "a bunch" of objects *)
   (* i.e. gc triggers multiple times *)
   (* note if gc is off, this should OOM *)
-  let r =
+  let r, _ =
     interpret
       [
         Alloca 2;
@@ -106,7 +112,7 @@ let oom () =
            1000000)
 
 let array () =
-  let r =
+  let r, _ =
     interpret
       [
         DisableGc;
@@ -131,7 +137,7 @@ let array () =
   check int "Max address" (1024 + 101) r.heap.max_address
 
 let obj () =
-  let r =
+  let r, _ =
     interpret
       [
         DisableGc;
@@ -155,7 +161,7 @@ let obj () =
   check int "Max address" (1024 + 2) r.heap.max_address
 
 let circular_ref () =
-  let r =
+  let r, _ =
     interpret
       [
         DisableGc;
@@ -173,7 +179,7 @@ let circular_ref () =
   check int "Max address" (1024 + 1) r.heap.max_address
 
 let linked_list () =
-  let r =
+  let r, _ =
     interpret
       [
         DisableGc;
@@ -201,7 +207,7 @@ let linked_list () =
   check int "Max address" (1024 + 101) r.heap.max_address
 
 let reassign () =
-  let r =
+  let r, s =
     interpret
       [
         DisableGc;
@@ -219,7 +225,7 @@ let reassign () =
       ]
       100
   in
-  check string "output" "0, {foo: 10, bar: 20}" r.stdout;
+  check string "output" "0, {foo: 10, bar: 20}" s;
   check int "Memory used" 1 r.heap.used_size;
   check int "Max address" (1024 + 1) r.heap.max_address
 

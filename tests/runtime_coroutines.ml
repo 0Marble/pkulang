@@ -1,21 +1,27 @@
 open Alcotest
 open Pkulang
 
-let interpret cmds n =
+let interpret ?(globals_cnt = 0) cmds n =
+  let stdout = ref "" in
   let r =
     Runtime.create ""
       (cmds
       |> List.map (fun c : Runtime.command ->
              { cmd = c; loc = Location.Spot 0 })
       |> Array.of_list)
-      0 0
+      0 globals_cnt
+      (fun () -> failwith "no stdin")
+      (fun (s : string) ->
+        prerr_string s;
+        stdout := !stdout ^ s)
   in
   let rec complete r n =
     if Runtime.finished r then r
     else if n = 0 then failwith "Too many steps!"
     else complete (Runtime.step r) (n - 1)
   in
-  (complete r n).stdout
+  let _ = complete r n in
+  !stdout
 
 let simple () =
   check string "simple coroutine" "10"
