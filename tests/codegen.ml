@@ -83,12 +83,13 @@ let hello_world () =
   let src =
     {|
       fn main() void {
-        println("Hello World!");
+        let name: string = read_line();
+        println("Hello", name);
       }
       |}
   in
-  let s = compile_and_run src 100 in
-  check string "hello world" "Hello World!\n" s;
+  let s = compile_and_run ~stdin:(Some "Alex") src 100 in
+  check string "hello world" "Hello, Alex\n" s;
   ()
 
 let print_variable () =
