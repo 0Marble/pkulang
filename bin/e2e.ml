@@ -12,7 +12,7 @@ let parse_test file_path =
       CharMap.of_list [ ('n', '\n'); ('t', '\t'); ('\\', '\\'); ('"', '"') ]
     in
     let unescape s =
-      let s = List.fold_left ( ^ ) "" s in
+      let s = List.fold_left ( ^ ) "" s |> String.trim in
       assert (String.starts_with ~prefix:"\"" s);
       assert (String.ends_with ~suffix:"\"" s);
       let len = String.length s in
@@ -76,6 +76,7 @@ let () =
   Printexc.record_backtrace true;
   let tests =
     Sys.readdir "./examples" |> Array.to_list
+    |> List.fast_sort String.compare
     |> List.map (Filename.concat "./examples/")
     |> List.filter_map parse_test
   in
@@ -83,6 +84,9 @@ let () =
     tests
     |> List.filter_map (fun (file, source, expected, stdin) : string option ->
            try
+             Printf.eprintf "stdin: \"%s\"\n" (String.escaped stdin);
+             Printf.eprintf "stdout: \"%s\"\n" (String.escaped expected);
+
              let stdout = compile_and_run source stdin in
 
              if stdout <> expected then (

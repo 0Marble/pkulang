@@ -1,3 +1,5 @@
+% stdout: "30\n"
+
 fn main() void {
 	% no type inference :(
 	let x: int = 10;

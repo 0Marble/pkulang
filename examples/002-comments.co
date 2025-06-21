@@ -1,3 +1,5 @@
+% stdout: "ok!\n"
+
 fn main() void {
 	% println("This wont get printed");
 	println("ok!");

@@ -1,3 +1,5 @@
+% stdout: "->main\n->foo\n->bar\nbar->\nfoo->\nmain->\n"
+
 fn foo() void {
 	println("->foo");
 	% we don't care about declaration order

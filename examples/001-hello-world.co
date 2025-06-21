@@ -1,8 +1,13 @@
+% comments start with '%'.
+% declaring stdin/stdout for running the example automatically with bin/e2e
+% stdin: "World"
+% stdout: "Hello, World\n"
+
 % main() void: entry point
 fn main() void {
-	print("Enter your name: ");
-	let name: str = read_line();
-	% print can take many args
-	println("Hello,", name, "!");
+	% read line from stdin
+	let name: string = read_line();
+	% print can take many args, automatically adds ',' between args
+	println("Hello", name);
 }
 
