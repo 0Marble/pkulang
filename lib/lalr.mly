@@ -7,6 +7,7 @@
 %token <(string * Location.location)> TokSub
 %token <(string * Location.location)> TokMul
 %token <(string * Location.location)> TokDiv
+%token <(string * Location.location)> TokMod
 %token <(string * Location.location)> TokLt
 %token <(string * Location.location)> TokLe
 %token <(string * Location.location)> TokGt
@@ -74,6 +75,7 @@
     | TokSub (str,loc) -> {kind = TokSub; str; loc;}
     | TokMul (str,loc) -> {kind = TokMul; str; loc;}
     | TokDiv (str,loc) -> {kind = TokDiv; str; loc;}
+    | TokMod (str,loc) -> {kind = TokMod; str; loc;}
     | TokLt (str,loc) -> {kind = TokLt; str; loc;}
     | TokLe (str,loc) -> {kind = TokLe; str; loc;}
     | TokGt (str,loc) -> {kind = TokGt; str; loc;}
@@ -371,6 +373,7 @@ binop3:
 binop4:
     | TokMul { ( TokMul $1, snd $1)}
     | TokDiv { ( TokDiv $1, snd $1)}
+    | TokMod { ( TokMod $1, snd $1)}
 
 assign_op:
     | TokAddAssign { (TokAdd $1, $1) }

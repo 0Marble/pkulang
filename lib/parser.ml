@@ -9,6 +9,7 @@ let parse_root src =
     | TokSub -> TokSub (t.str, t.loc)
     | TokMul -> TokMul (t.str, t.loc)
     | TokDiv -> TokDiv (t.str, t.loc)
+    | TokMod -> TokMod (t.str, t.loc)
     | TokLt -> TokLt (t.str, t.loc)
     | TokLe -> TokLe (t.str, t.loc)
     | TokGt -> TokGt (t.str, t.loc)
@@ -48,7 +49,8 @@ let parse_root src =
     | TokStruct -> TokStruct (t.str, t.loc)
     | TokType -> TokType (t.str, t.loc)
     | TokEnd -> TokEnd (t.str, t.loc)
-    | _ -> failwith "Todo"
+    | TokAmp -> failwith "TokAmp not supported"
+    | TokPub -> failwith "TokPub not supported"
   in
 
   let tokens = Tokenizer.tokenize src |> Array.of_list in
