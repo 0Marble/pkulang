@@ -12,6 +12,9 @@ type command_kind =
   | Sub of (Stack.location * operand * operand)
   | Mul of (Stack.location * operand * operand)
   | Div of (Stack.location * operand * operand)
+  | Mod of (Stack.location * operand * operand)
+  | And of (Stack.location * operand * operand)
+  | Or of (Stack.location * operand * operand)
   | Eql of (Stack.location * operand * operand)
   | Lt of (Stack.location * operand * operand)
   | Assign of (Stack.location * operand)
@@ -118,6 +121,15 @@ let string_of_cmd ?(ctx : (runtime * Stack.frame) option = None) ?(mark = false)
           (string_of_operand lhs) (string_of_operand rhs)
     | Div (dest, lhs, rhs) ->
         Printf.sprintf "Div %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Mod (dest, lhs, rhs) ->
+        Printf.sprintf "Mod %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | And (dest, lhs, rhs) ->
+        Printf.sprintf "And %s %s %s" (string_of_dest dest)
+          (string_of_operand lhs) (string_of_operand rhs)
+    | Or (dest, lhs, rhs) ->
+        Printf.sprintf "Or %s %s %s" (string_of_dest dest)
           (string_of_operand lhs) (string_of_operand rhs)
     | Eql (dest, lhs, rhs) ->
         Printf.sprintf "Eql %s %s %s" (string_of_dest dest)
@@ -378,6 +390,9 @@ let step r =
     | Sub (dest, lhs, rhs) -> binop dest lhs ( - ) rhs
     | Mul (dest, lhs, rhs) -> binop dest lhs ( * ) rhs
     | Div (dest, lhs, rhs) -> binop dest lhs ( / ) rhs
+    | Mod (dest, lhs, rhs) -> binop dest lhs Int.rem rhs
+    | And (dest, lhs, rhs) -> binop dest lhs Int.logand rhs
+    | Or (dest, lhs, rhs) -> binop dest lhs Int.logor rhs
     | Eql (dest, lhs, rhs) -> (
         match (op_to_val r lhs, op_to_val r rhs) with
         | Number lhs, Number rhs ->
