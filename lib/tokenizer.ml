@@ -23,6 +23,8 @@ type token_kind =
   | TokEq
   | TokNeq
   | TokNot
+  | TokAnd
+  | TokOr
   | TokAmp
   | TokYield
   | TokResume
@@ -90,6 +92,8 @@ Trie.add_word token_map "+=" TokAddAssign;;
 Trie.add_word token_map "==" TokEq;;
 Trie.add_word token_map "!=" TokNeq;;
 Trie.add_word token_map "!" TokNot;;
+Trie.add_word token_map "&&" TokAnd;;
+Trie.add_word token_map "||" TokOr;;
 Trie.add_word token_map "<" TokLt;;
 Trie.add_word token_map "<=" TokLe;;
 Trie.add_word token_map ">" TokGt;;

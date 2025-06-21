@@ -1,0 +1,46 @@
+% stdout: "0\n-2\n0-4\n-6\n-8\n"
+
+fn array_iter(arr: [int]) co int {
+	co iter(arr: [int]) int {
+		let i: int = 0;
+		while(i < len(arr)) {
+			yield a[i];
+			i += 1;
+		}
+	}
+	return create(iter, arr);
+}
+
+% map_fn and coro are function pointers
+fn map(map_fn: fn (int) int, coro: co () int) co int {
+	co map(map_fn: fn (int) int, coro: co () int) int {
+		if resume (x: coro) yield map_fn(x);
+	}
+	return create(map, map_fn, coro);
+}
+
+fn filter(pred: fn (int) int, coro: co () int) co int {
+	co filter(pred: fn (int) int, coro: co () int) int {
+		if resume (x: coro) {
+			if (pred(x)) yield x;
+		}
+	}
+}
+
+fn main() void {
+	let arr: [int] = [0,1,2,3,4,5,6,7,8,9];
+
+	fn negate(x: int) int {
+		return -x;
+	}
+
+	% no bool type; 1 = true, 0 = false
+	fn is_even(x: int) int {
+		if (x mod 2 == 0) return 1;
+		else return 0;
+	}
+
+	for (x: map(negate, filter(is_even, array_iter(arr)))) {
+		println(x);
+	}
+}

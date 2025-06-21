@@ -1,0 +1,34 @@
+struct Tree {
+	val: int,
+	left: Tree = null,
+	right: Tree = null,
+
+	% we can call 'co' functions from other 'co' functions
+	% the 'yield's all go to the original 'resume'
+	fn iterate(self: Tree) co int {
+		co iterate(self: Tree) int {
+			yield self.val;
+			% 'iterate' here refers to the local coroutine function, not the method
+			if (self.left) iterate(self.left);
+			if (self.right) iterate(self.right);
+		}
+		return create(iterate, self);
+	}
+}
+
+fn main() void {
+	let t: Tree = new Tree{
+		val: 10, 
+		left: new Tree{
+			val: 20,
+		},
+		right: new Tree{
+			val: 30,
+			left: new Tree{val: 40},
+		},
+	};
+	
+	for (x: t.iterate()) {
+		println(x);
+	}
+}

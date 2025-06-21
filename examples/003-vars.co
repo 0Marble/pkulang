@@ -1,0 +1,14 @@
+% stdout: "10, 20, 30\n"
+
+% let statements have to have a value assigned to them.
+
+% global variable, can be assigned to arbitrary expression.
+let z: int = 30;
+
+fn main() void {
+	% no type inference :(
+	let x: int = 10;
+	let y: int = 20;
+	println(x, y, z);
+}
+

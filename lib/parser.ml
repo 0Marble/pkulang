@@ -22,6 +22,8 @@ let parse_root src =
     | TokEq -> TokEq (t.str, t.loc)
     | TokNeq -> TokNeq (t.str, t.loc)
     | TokNot -> TokNot (t.str, t.loc)
+    | TokAnd -> TokAnd (t.str, t.loc)
+    | TokOr -> TokOr (t.str, t.loc)
     | TokYield -> TokYield (t.str, t.loc)
     | TokResume -> TokResume (t.str, t.loc)
     | TokCreate -> TokCreate (t.str, t.loc)
