@@ -1,0 +1,11 @@
+% stdout: "0\n1\n2\n3\n4\n"
+
+% pretty self-explanitory 
+fn main() void {
+	let i: int = 0;
+	while(i < 5) {
+		println(i);
+		i += 1;
+	}
+}
+

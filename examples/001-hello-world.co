@@ -6,8 +6,7 @@
 % main() void: entry point
 fn main() void {
 	% read line from stdin
-	let name: string = read_line();
 	% print can take many args, automatically adds ',' between args
-	println("Hello", name);
+	println("Hello", read_line());
 }
 

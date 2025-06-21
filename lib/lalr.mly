@@ -20,6 +20,8 @@
 %token <(string * Location.location)> TokEq
 %token <(string * Location.location)> TokNeq
 %token <(string * Location.location)> TokNot
+%token <(string * Location.location)> TokAnd
+%token <(string * Location.location)> TokOr
 %token <(string * Location.location)> TokYield
 %token <(string * Location.location)> TokResume
 %token <(string * Location.location)> TokCreate
@@ -88,6 +90,8 @@
     | TokEq (str,loc) -> {kind = TokEq; str; loc;}
     | TokNeq (str,loc) -> {kind = TokNeq; str; loc;}
     | TokNot (str,loc) -> {kind = TokNot; str; loc;}
+    | TokAnd (str,loc) -> {kind = TokAnd; str; loc;}
+    | TokOr (str,loc) -> {kind = TokOr; str; loc;}
     | TokYield (str,loc) -> {kind = TokYield; str; loc;}
     | TokResume (str,loc) -> {kind = TokResume; str; loc;}
     | TokCreate (str,loc) -> {kind = TokCreate; str; loc;}
@@ -358,6 +362,10 @@ return_stmt:
 expr_stmt:
     | expr=expr; TokSemi; {expr}
 
+binop0: 
+    | TokAnd { ( TokAnd $1, snd $1)}
+    | TokOr { ( TokOr $1, snd $1)}
+
 binop1: 
     | TokEq { ( TokEq $1, snd $1)}
     | TokNeq { ( TokNeq $1, snd $1)}
@@ -389,6 +397,13 @@ expr:
     let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd (snd op); } in
     Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
     let n = {lhs; rhs=(BinExpr n); op=to_op (TokAssign (snd op)); node_idx=next_idx (); loc = snd (snd op); } in
+    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    BinExpr n }
+    | expr0 {$1}
+
+expr0:
+    | lhs=expr0; op=binop0; rhs=expr1; {
+    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
     Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
     BinExpr n }
     | expr1 {$1}

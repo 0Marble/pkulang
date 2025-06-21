@@ -1,0 +1,30 @@
+% stdout: "{x: 1, y: 1}\n2\n"
+
+struct Point {
+	% everything is public
+	% fields can have an optional default value
+	x: int = 0,
+	y: int = 0,
+
+	fn init(x: int, y: int) Point {
+		% all objects are stored on the heap
+		% must have all fields defined
+		return new Point{x: x, y: y};
+	}
+
+	% static variable, uses default values for fields
+	let ORIGIN: Point = new Point{};
+
+	% we can name 'self' in any way we want, it just has to be the first parameter
+	fn distance_squared(self: Point, other: Point) int {
+		return (self.x - other.x) * (self.x - other.x) + (self.y - other.y) * (self.y - other.y);
+	}
+}
+
+fn main() void {
+	let a: Point = Point.init(1, 1);
+	% prints all fields recursively
+	println(a);
+	println(a.distance_squared(Point.ORIGIN));
+}
+
