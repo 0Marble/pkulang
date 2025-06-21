@@ -1,4 +1,7 @@
+% stdout: "created\nstart\n0\n1\n2\n3\n4\n5\ndone\n"
+
 co range(a: int, b: int) int {
+	println("started");
 	while (a < b) {
 		yield a;
 		a += 1;
@@ -6,8 +9,11 @@ co range(a: int, b: int) int {
 }
 
 fn main() void {
-	let coro: co int = create(range, 0, 10);
+	% apply args 0,5 to range()
+	let coro: co int = create(range, 0, 5);
+	println("created");
 	while(1) {
+		% only now the code in range starts executing
 		if resume (x: coro) {
 			% if coroutine yields, the results gets bound to x
 			println(x);
