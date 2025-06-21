@@ -128,12 +128,19 @@ and for_loop = {
 
 and while_loop = { node_idx : int; parent : int; condition : item; body : item }
 and root = { node_idx : int; children : item list }
-and named_type = { node_idx : int; name : string }
+and named_type = { node_idx : int; name : string; parent : int }
 and array_type = { elem : item; node_idx : int }
-and fn_type = { node_idx : int; args : item list; return_type : item }
-and co_type = { node_idx : int; args : item list; yield : item }
+
+and fn_type = {
+  node_idx : int;
+  args : item list;
+  return_type : item;
+  parent : int;
+}
+
+and co_type = { node_idx : int; args : item list; yield : item; parent : int }
 and co_obj_type = { node_idx : int; yield : item }
-and dot_type = { parent : item; child : string; node_idx : int }
+and dot_type = { parent : int; child : string; node_idx : int }
 
 type symbolTable = { root : item; items : (int, item) Hashtbl.t }
 
@@ -195,10 +202,10 @@ let get_parent (scope : item) (st : symbolTable) : item option =
   | ForLoop x -> Hashtbl.find_opt st.items x.parent
   | WhileLoop x -> Hashtbl.find_opt st.items x.parent
   | Argument x -> Hashtbl.find_opt st.items x.parent
-  | NamedType _ -> None
-  | ArrayType _ -> None
-  | FnType _ -> None
-  | CoType _ -> None
+  | NamedType x -> Hashtbl.find_opt st.items x.parent
+  | ArrayType x -> Hashtbl.find_opt st.items x.node_idx
+  | FnType x -> Hashtbl.find_opt st.items x.node_idx
+  | CoType x -> Hashtbl.find_opt st.items x.node_idx
   | CoObjType _ -> None
   | DotType _ -> None
   | IntType -> None
@@ -246,13 +253,69 @@ let rec find_by_name (name : string) (scope : item) (st : symbolTable) :
     item option =
   let children = get_children scope in
   match
-    List.find_opt (fun (child : item) -> get_name child = Some name) children
+    List.find_opt
+      (fun (child : item) -> get_name child = Some name)
+      children (*match name with child.name*)
   with
-  | Some child -> Some child
+  | Some child -> Some child (*found -> return child*)
   | None -> (
       match get_parent scope st with
-      | Some parent -> find_by_name name parent st
+      | Some parent ->
+          find_by_name name parent st (*recursively search in parent scope*)
       | None -> None)
+
+(*
+  input: item & symbolTable
+  output: item
+  usage: get the item object that defines the current item variable
+  e.g.:
+  Struct Foo {};
+  let foo = Foo {};
+  get_definition(foo, st) => Foo
+   *)
+
+let rec get_definition (it : item) (st : symbolTable) : item option =
+  match it with
+  | Field _ | FnDecl _ | StructDecl _ | CoDecl _ | LetStmt _ | AliasStmt _
+  | Argument _ | Block _ | ForLoop _ | WhileLoop _ | IfStmt _ | IfResumeStmt _
+  | ContinueStmt _ | BreakStmt _ | ReturnStmt _ | YieldStmt _ | NumExpr _
+  | StrExpr _ | ArrayType _ | FnType _ | CoType _ | CoObjType _ | Root _ ->
+      Some it (*these items define smth so they are their own def?*)
+  | VarExpr x -> (
+      match Hashtbl.find_opt st.items x.parent with
+      | Some parent_scope -> (
+          match find_by_name x.name parent_scope st with
+          | Some def_item -> Some def_item
+          | None -> failwith "Definition not found")
+      | None -> failwith "VarExpr has no parent scope in symbol table.")
+  | NamedType x -> (
+      match x.name with
+      | "int" -> Some IntType
+      | "str" -> Some StrType
+      | "void" -> Some VoidType
+      | "null" -> Some NullType
+      | _ -> (
+          match find_by_name x.name st.root st with
+          | Some def_item -> (
+              match def_item with
+              | StructDecl _ | AliasStmt _ -> Some def_item
+              | _ -> failwith "Error: Expected a struct or alias for named type"
+              )
+          | _ -> failwith "Error: Definition not found"))
+  | DotType x -> (
+      let parent =
+        match get_parent it st with
+        | Some parent -> parent
+        | _ -> failwith "Error: DotType parent not found in symbol table"
+      in
+      let parent_type_definition = get_definition parent st in
+      match parent_type_definition with
+      | Some (StructDecl s_decl) -> (
+          match find_by_name x.child (StructDecl s_decl) st with
+          | Some def_item -> Some def_item
+          | None -> failwith "Error: child not found in struct")
+      | _ -> failwith "Parent does not resolve to a struct or alias type.")
+  | _ -> failwith "TODO"
 
 let build_symbol_table (root : Ast.root) : symbolTable =
   let st = Hashtbl.create 64 in
@@ -273,9 +336,13 @@ let build_symbol_table (root : Ast.root) : symbolTable =
     | NamedType x -> (
         match x.name with
         | "int" -> IntType
+        | "string" -> StrType
         | "void" -> VoidType
+        | "null" -> NullType
         | _ ->
-            let nt = { name = x.name; node_idx = x.node_idx } in
+            let (nt : named_type) =
+              { name = x.name; node_idx = x.node_idx; parent = current_scope }
+            in
             Hashtbl.add st x.node_idx (NamedType nt);
             NamedType nt)
     | ArrayType x ->
@@ -286,17 +353,14 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         ArrayType at
     | DotType x ->
         let dt =
-          {
-            parent = scan_type x.parent current_scope;
-            child = x.child;
-            node_idx = x.node_idx;
-          }
+          { parent = current_scope; child = x.child; node_idx = x.node_idx }
         in
         Hashtbl.add st x.node_idx (DotType dt);
         DotType dt
     | FnType x ->
         let ft =
           {
+            parent = current_scope;
             node_idx = x.node_idx;
             args = List.map (fun a -> scan_type a current_scope) x.args;
             return_type = scan_type x.ret current_scope;
@@ -307,6 +371,7 @@ let build_symbol_table (root : Ast.root) : symbolTable =
     | CoType x ->
         let ct =
           {
+            parent = current_scope;
             node_idx = x.node_idx;
             args = List.map (fun a -> scan_type a current_scope) x.args;
             yield = scan_type x.yield current_scope;
