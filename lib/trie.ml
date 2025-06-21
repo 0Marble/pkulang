@@ -21,6 +21,7 @@ let rec add_word (root : 'a t ref) s value =
     | Some leaf -> add_word leaf rest value
     | None ->
         let leaf = init () in
+        assert (Option.is_none !root.next.(idx));
         !root.next.(idx) <- Some leaf;
         add_word leaf rest value
 

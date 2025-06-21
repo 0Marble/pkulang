@@ -10,6 +10,7 @@ type token_kind =
   | TokSub
   | TokMul
   | TokDiv
+  | TokMod
   | TokLt
   | TokLe
   | TokGt
@@ -83,6 +84,7 @@ Trie.add_word token_map "+" TokAdd;;
 Trie.add_word token_map "-" TokSub;;
 Trie.add_word token_map "*" TokMul;;
 Trie.add_word token_map "/" TokDiv;;
+Trie.add_word token_map "mod" TokMod;;
 Trie.add_word token_map "=" TokAssign;;
 Trie.add_word token_map "+=" TokAddAssign;;
 Trie.add_word token_map "==" TokEq;;
