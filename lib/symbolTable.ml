@@ -1,13 +1,6 @@
-exception No_scope
+[@@@ocaml.warning "-26-27"] (*Skips warning of unused variable*)
 
-(* type scope = {
-  scope_typ : scope_typ;
-  node_idx : int; (*node id of scope object in AST*)
-  parent: scope; (*Global doesnt hv a parent so how?*)
-  children: scope list option;
-  items: item list option;
-  (*How do I store the object of the scope itself? e.g. function has params, struct has fields*)
-} *)
+exception No_scope
 
 type item =
   | Field of field
@@ -16,6 +9,8 @@ type item =
   | LetStmt of let_stmt
   | IfStmt of if_stmt
   | ReturnStmt of return_stmt
+  | ContinueStmt of continue_stmt
+  | BreakStmt of break_stmt
   | Block of block
   | Argument of argument
   | CallExpr of call_expr
@@ -57,6 +52,8 @@ and if_stmt = {
   if_false : item option;
 }
 
+and continue_stmt = { node_idx : int; parent : int }
+and break_stmt = { node_idx : int; parent : int }
 and return_stmt = { node_idx : int; parent : int }
 and call_expr = { node_idx : int; parent : int }
 
@@ -87,6 +84,8 @@ let get_children (scope : item) : item list =
   | Block x -> x.body
   | Root x -> x.children
   | IfStmt x -> x.if_true :: Option.to_list x.if_false
+  | ContinueStmt _ -> []
+  | BreakStmt _ -> []
   | LetStmt _ -> []
   | ReturnStmt _ -> []
   | CallExpr _ -> []
@@ -105,6 +104,8 @@ let get_parent (scope : item) (st : symbolTable) : item option =
   | LetStmt x -> Hashtbl.find_opt st.items x.parent
   | IfStmt x -> Hashtbl.find_opt st.items x.parent
   | ReturnStmt x -> Hashtbl.find_opt st.items x.parent
+  | ContinueStmt x -> Hashtbl.find_opt st.items x.parent
+  | BreakStmt x -> Hashtbl.find_opt st.items x.parent
   | CallExpr x -> Hashtbl.find_opt st.items x.parent
   | Block x -> Hashtbl.find_opt st.items x.parent
   | Argument x -> Hashtbl.find_opt st.items x.parent
@@ -127,6 +128,8 @@ let get_name (it : item) : string option =
   | NullType -> Some "null"
   | IfStmt _ -> None
   | ReturnStmt _ -> None
+  | ContinueStmt _ -> None
+  | BreakStmt _ -> None
   | CallExpr _ -> None
   | Block _ -> None
   | Root _ -> None
@@ -214,8 +217,24 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         LetStmt ls
     | ForLoop x -> failwith "TODO"
     | WhileLoop x -> failwith "TODO"
-    | ContinueStmt x -> failwith "TODO"
-    | BreakStmt x -> failwith "TODO"
+    | ContinueStmt x ->
+        let (cs : continue_stmt) =
+          { node_idx = x.node_idx; parent = current_scope }
+        in
+        Hashtbl.add st x.node_idx (ContinueStmt cs);
+        ContinueStmt cs
+    | BreakStmt x ->
+        let (bs : break_stmt) =
+          { node_idx = x.node_idx; parent = current_scope }
+        in
+        Hashtbl.add st x.node_idx (BreakStmt bs);
+        BreakStmt bs
+    | ReturnStmt x ->
+        let (rs : return_stmt) =
+          { node_idx = x.node_idx; parent = current_scope }
+        in
+        Hashtbl.add st x.node_idx (ReturnStmt rs);
+        ReturnStmt rs
     | IfStmt x ->
         let (is : if_stmt) =
           {
@@ -230,12 +249,6 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         in
         Hashtbl.add st x.node_idx (IfStmt is);
         IfStmt is
-    | ReturnStmt x ->
-        let (rs : return_stmt) =
-          { node_idx = x.node_idx; parent = current_scope }
-        in
-        Hashtbl.add st x.node_idx (ReturnStmt rs);
-        ReturnStmt rs
     | Expr x -> scan_expr x current_scope
     | FnDecl x ->
         let args = List.map (fun arg -> scan_args arg x.node_idx) x.args in
@@ -258,4 +271,16 @@ let build_symbol_table (root : Ast.root) : symbolTable =
     | IfResumeStmt x -> failwith "TODO"
     | YieldStmt x -> failwith "TODO"
   in
-  failwith "TODO"
+
+  let r =
+    Root
+      {
+        node_idx = root.node_idx;
+        children =
+          List.map
+            (fun c -> scan_stmt (Ast.top_stmt_to_stmt c) root.node_idx)
+            root.stmts;
+      }
+  in
+  Hashtbl.add st root.node_idx r;
+  { root = r; items = st }

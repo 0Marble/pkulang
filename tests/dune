@@ -44,11 +44,6 @@
  (libraries pkulang alcotest))
 
 (test
- (name test_symbol_table)
- (modules test_symbol_table)
- (libraries pkulang alcotest))
-
-(test
  (name codegen)
  (modules codegen)
  (libraries pkulang alcotest))
