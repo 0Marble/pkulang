@@ -129,9 +129,7 @@ and for_loop = {
 and while_loop = { node_idx : int; parent : int; condition : item; body : item }
 and root = { node_idx : int; children : item list }
 and named_type = { node_idx : int; name : string }
-(*For now lets hv named_type w/o parent ie no inheritance/polymorphism*)
-
-and array_type = { elem : Ast.typ; node_idx : int }
+and array_type = { elem : item; node_idx : int }
 and fn_type = { node_idx : int; args : item list; return_type : item }
 and co_type = { node_idx : int; args : item list; yield : item }
 and co_obj_type = { node_idx : int; yield : item }
@@ -275,13 +273,15 @@ let build_symbol_table (root : Ast.root) : symbolTable =
     | NamedType x -> (
         match x.name with
         | "int" -> IntType
-        | "void" -> NullType
+        | "void" -> VoidType
         | _ ->
             let nt = { name = x.name; node_idx = x.node_idx } in
             Hashtbl.add st x.node_idx (NamedType nt);
             NamedType nt)
     | ArrayType x ->
-        let at = { elem = x.elem; node_idx = x.node_idx } in
+        let at =
+          { elem = scan_type x.elem current_scope; node_idx = x.node_idx }
+        in
         Hashtbl.add st x.node_idx (ArrayType at);
         ArrayType at
     | DotType x ->
@@ -328,26 +328,26 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         in
         Hashtbl.add st x.node_idx (CallExpr e);
         CallExpr e
-        | DotExpr x ->
-          let (e : dot_expr) =
+    | DotExpr x ->
+        let (e : dot_expr) =
           { parent = current_scope; node_idx = x.node_idx }
         in
         Hashtbl.add st x.node_idx (DotExpr e);
         DotExpr e
-        | VarExpr x ->
-          let (e : var_expr) =
+    | VarExpr x ->
+        let (e : var_expr) =
           { parent = current_scope; node_idx = x.node_idx; name = x.name }
         in
         Hashtbl.add st x.node_idx (VarExpr e);
         VarExpr e
-        | NumExpr x ->
-          let (e : num_expr) =
+    | NumExpr x ->
+        let (e : num_expr) =
           { parent = current_scope; node_idx = x.node_idx; num = x.num }
         in
         Hashtbl.add st x.node_idx (NumExpr e);
         NumExpr e
-        | StringExpr x ->
-          let (e : str_expr) =
+    | StringExpr x ->
+        let (e : str_expr) =
           { parent = current_scope; node_idx = x.node_idx; str = x.str }
         in
         Hashtbl.add st x.node_idx (StrExpr e);
