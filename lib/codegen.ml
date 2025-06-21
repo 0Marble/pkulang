@@ -127,14 +127,24 @@ let codegen (src : string) (fn_list : Ast.node list)
           | TokSub -> Sub (res, lhs, rhs)
           | TokMul -> Mul (res, lhs, rhs)
           | TokDiv -> Div (res, lhs, rhs)
+          | TokMod -> Mod (res, lhs, rhs)
           | TokEq -> Eql (res, lhs, rhs)
           | TokLt -> Lt (res, lhs, rhs)
           | TokGt ->
               emit { cmd = Sub (res, lhs, rhs); loc = x.loc };
               Lt (res, Number 0, Location res)
+          | TokGe ->
+              emit { cmd = Lt (res, lhs, rhs); loc = x.loc };
+              Sub (res, Number 1, Location res)
+          | TokLe ->
+              emit { cmd = Sub (res, lhs, rhs); loc = x.loc };
+              emit { cmd = Lt (res, Number 0, Location res); loc = x.loc };
+              Sub (res, Number 1, Location res)
           | TokNeq ->
               emit { cmd = Eql (res, lhs, rhs); loc = x.loc };
               Sub (res, Number 1, Location res)
+          | TokAnd -> And (res, lhs, rhs)
+          | TokOr -> Or (res, lhs, rhs)
           | _ -> failwith "Error: unsupported binop"
         in
         emit { cmd; loc = x.loc };
