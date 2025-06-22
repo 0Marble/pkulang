@@ -4,7 +4,7 @@ exception No_scope
 
 type item =
   | Field of field
-  | FnDecl of func_decl
+  | FnDecl of fn_decl
   | StructDecl of struct_decl
   | CoDecl of co_decl
   | LetStmt of let_stmt
@@ -97,7 +97,7 @@ and yield_stmt = { value : item option; node_idx : int; parent : int }
 and continue_stmt = { node_idx : int; parent : int }
 and break_stmt = { node_idx : int; parent : int }
 and return_stmt = { node_idx : int; parent : int; value : item option }
-and call_expr = { node_idx : int; parent : int; fn: item; params : item list }
+and call_expr = { node_idx : int; parent : int; fn : item; params : item list }
 and var_expr = { parent : int; node_idx : int; name : string }
 and num_expr = { parent : int; node_idx : int; num : int }
 and str_expr = { parent : int; node_idx : int; str : string }
@@ -111,20 +111,24 @@ and bin_expr = {
   op : Tokenizer.token;
 }
 
-and unary_expr = { parent : int; node_idx : int; op : Tokenizer.token; 
-                   sub_expr : item }
-and index_expr = { parent : int; node_idx : int; arr: item; idx : item list }
+and unary_expr = {
+  parent : int;
+  node_idx : int;
+  op : Tokenizer.token;
+  sub_expr : item;
+}
+
+and index_expr = { parent : int; node_idx : int; arr : item; idx : item list }
 and array_literal = { parent : int; node_idx : int; children : item list }
 and null_literal = { parent : int; node_idx : int }
-and new_expr = { parent : int; node_idx : int; typ: item; 
-                 fields : item list } 
-and create_expr = { parent : int; node_idx : int; args : item list; co: item }
-and resume_expr = { parent : int; node_idx : int; co: item }
+and new_expr = { parent : int; node_idx : int; typ : item; fields : item list }
+and create_expr = { parent : int; node_idx : int; args : item list; co : item }
+and resume_expr = { parent : int; node_idx : int; co : item }
 
-and func_decl = {
-  name : string;
+and fn_decl = {
   node_idx : int;
   parent : int;
+  name : string;
   args : item list;
   return_type : item;
   body : item; (*kiv*)
@@ -161,14 +165,20 @@ and array_type = { elem : item; node_idx : int }
 
 and fn_type = {
   node_idx : int;
+  parent : int;
   args : item list;
   return_type : item;
-  parent : int;
 }
 
 and co_type = { node_idx : int; args : item list; yield : item; parent : int }
 and co_obj_type = { node_idx : int; yield : item }
-and dot_type = { parent : int; child : string; node_idx : int; dt_parent: item }
+
+and dot_type = {
+  parent : int;
+  child : string;
+  node_idx : int;
+  dt_parent : item;
+}
 
 type symbolTable = { root : item; items : (int, item) Hashtbl.t }
 
@@ -383,8 +393,8 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
       | Some parent_scope -> (
           match find_by_name x.name parent_scope st with
           | Some def_item -> Some def_item
-          | None -> failwith "Definition not found")
-      | None -> failwith "VarExpr has no parent scope in symbol table.")
+          | None -> failwith "Error: Definition not found for VarExpr")
+      | None -> failwith "Error: VarExpr has no parent scope in symbol table.")
   | NamedType x -> (
       match x.name with
       | "int" -> Some IntType
@@ -392,34 +402,34 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
       | "void" -> Some VoidType
       | "null" -> Some NullType
       | _ -> (
-          match find_by_name x.name (Option.get (get_parent (NamedType x) st)) st with
+          match
+            find_by_name x.name (Option.get (get_parent (NamedType x) st)) st
+          with
           | Some def_item -> (
               match def_item with
               | StructDecl _ -> Some def_item
               | _ -> failwith "Error: Not supported named type definition")
-          | _ -> failwith "Error: Definition not found"))
+          | _ -> failwith "Error: Definition not found for NamedType"))
   | DotType x -> (
       let parent =
         match get_parent it st with
         | Some parent -> parent
         | _ -> failwith "Error: DotType parent not found in symbol table"
       in
-      let parent_type_definition = get_definition parent st in
-      match parent_type_definition with
+      match get_definition parent st with
       | Some (StructDecl s_decl) -> (
           match find_by_name x.child (StructDecl s_decl) st with
           | Some def_item -> Some def_item
           | None -> failwith "Error: child not found in struct")
-      | _ -> failwith "Parent does not resolve to a struct or alias type.")
+      | _ -> failwith "Error: Parent does not resolve to a struct or alias type.")
   | DotExpr x -> (
-      let obj_def = get_definition x.obj st in
-      match obj_def with
-      | Some (NamedType nt) -> (
-          match find_by_name x.field (NamedType nt) st with
+      match get_definition x.obj st with
+      | Some (StructDecl s_decl) -> (
+          match find_by_name x.field (StructDecl s_decl) st with
           | Some field_item -> Some field_item
-          | None -> failwith "Error: child field not found within object")
-      | _ -> failwith "object not a named type")
-  | _ -> failwith "TODO"
+          | None -> failwith "Error: child field not found within struct")
+      | _ -> failwith "Error: Definition not found for DotExpr")
+  | _ -> failwith "Error: Definition not found for this item type"
 
 let build_symbol_table (root : Ast.root) : symbolTable =
   let st = Hashtbl.create 64 in
@@ -457,7 +467,12 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         ArrayType at
     | DotType x ->
         let dt =
-          { parent = current_scope; dt_parent = scan_type x.parent current_scope; child = x.child; node_idx = x.node_idx }
+          {
+            parent = current_scope;
+            dt_parent = scan_type x.parent current_scope;
+            child = x.child;
+            node_idx = x.node_idx;
+          }
         in
         Hashtbl.add st x.node_idx (DotType dt);
         DotType dt
@@ -493,7 +508,9 @@ let build_symbol_table (root : Ast.root) : symbolTable =
     match e with
     | CallExpr x ->
         let (e : call_expr) =
-          { parent = current_scope; node_idx = x.node_idx; 
+          {
+            parent = current_scope;
+            node_idx = x.node_idx;
             params = List.map (fun p -> scan_expr p current_scope) x.params;
             fn = scan_expr x.fn current_scope;
           }
@@ -541,7 +558,7 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         in
         Hashtbl.add st x.node_idx (BinExpr e);
         BinExpr e
-    | UnaryExpr x -> 
+    | UnaryExpr x ->
         let (e : unary_expr) =
           {
             parent = current_scope;
@@ -552,43 +569,57 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         in
         Hashtbl.add st x.node_idx (UnaryExpr e);
         UnaryExpr e
-    | IndexExpr x -> 
+    | IndexExpr x ->
         let (e : index_expr) =
-          { parent = current_scope; node_idx = x.node_idx; arr = scan_expr x.arr current_scope; idx = List.map (fun i -> scan_expr i current_scope) x.idx }
-          
+          {
+            parent = current_scope;
+            node_idx = x.node_idx;
+            arr = scan_expr x.arr current_scope;
+            idx = List.map (fun i -> scan_expr i current_scope) x.idx;
+          }
         in
         Hashtbl.add st x.node_idx (IndexExpr e);
         IndexExpr e
-    | ArrayLiteral x -> 
+    | ArrayLiteral x ->
         let children = List.map (fun e -> scan_expr e current_scope) x.elems in
         let (e : array_literal) =
           { parent = current_scope; node_idx = x.node_idx; children }
         in
         Hashtbl.add st x.node_idx (ArrayLiteral e);
         ArrayLiteral e
-    | NullLiteral x -> 
+    | NullLiteral x ->
         let (e : null_literal) =
           { parent = current_scope; node_idx = x.node_idx }
         in
         Hashtbl.add st x.node_idx (NullLiteral e);
         NullLiteral e
-    | NewExpr x -> 
+    | NewExpr x ->
         let (e : new_expr) =
-          { parent = current_scope; node_idx = x.node_idx; 
+          {
+            parent = current_scope;
+            node_idx = x.node_idx;
             typ = scan_type x.typ current_scope;
-            fields = List.map (fun (f : Ast.field_literal) -> scan_expr f.value current_scope) x.fields;
+            fields =
+              List.map
+                (fun (f : Ast.field_literal) -> scan_expr f.value current_scope)
+                x.fields;
           }
         in
         Hashtbl.add st x.node_idx (NewExpr e);
         NewExpr e
-    | CreateExpr x -> 
+    | CreateExpr x ->
         let args = List.map (fun e -> scan_expr e current_scope) x.params in
         let (e : create_expr) =
-          { parent = current_scope; node_idx = x.node_idx; args = args; co = scan_expr x.coroutine current_scope }
+          {
+            parent = current_scope;
+            node_idx = x.node_idx;
+            args;
+            co = scan_expr x.coroutine current_scope;
+          }
         in
         Hashtbl.add st x.node_idx (CreateExpr e);
         CreateExpr e
-    | ResumeExpr x -> 
+    | ResumeExpr x ->
         let (e : resume_expr) =
           {
             parent = current_scope;
@@ -635,8 +666,11 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         BreakStmt bs
     | ReturnStmt x ->
         let (rs : return_stmt) =
-          { node_idx = x.node_idx; parent = current_scope; 
-            value = Option.map (fun v -> scan_expr v current_scope) x.value }
+          {
+            node_idx = x.node_idx;
+            parent = current_scope;
+            value = Option.map (fun v -> scan_expr v current_scope) x.value;
+          }
         in
         Hashtbl.add st x.node_idx (ReturnStmt rs);
         ReturnStmt rs
@@ -693,7 +727,7 @@ let build_symbol_table (root : Ast.root) : symbolTable =
     | FnDecl x ->
         let args = List.map (fun arg -> scan_args arg x.node_idx) x.args in
         let body = scan_stmt x.body x.node_idx in
-        let (fn : func_decl) =
+        let (fn : fn_decl) =
           {
             name = x.name;
             node_idx = x.node_idx;
@@ -758,25 +792,25 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         Hashtbl.add st x.node_idx (WhileLoop wl);
         WhileLoop wl
     | Expr x -> scan_expr x current_scope
-  and scan_decl (decl : Ast.decl) (current_scope : int) = 
+  and scan_decl (decl : Ast.decl) (current_scope : int) =
     match decl with
-      | CoDecl d -> scan_stmt (CoDecl d) current_scope
-      | LetStmt d -> scan_stmt (LetStmt d) current_scope
-      | StructDecl d -> scan_stmt (StructDecl d) current_scope
-      | FnDecl d -> scan_stmt (FnDecl d) current_scope
-      | Field f -> 
-          let (f : field) =
-            {
-              name = f.var_name;
-              node_idx = f.node_idx;
-              parent = current_scope;
-              typ = scan_type f.field_type current_scope;
-              value = Option.map (fun v -> scan_expr v current_scope) f.value;
-            }
-          in
-          Hashtbl.add st f.node_idx (Field f);
-          Field f
+    | CoDecl d -> scan_stmt (CoDecl d) current_scope
+    | LetStmt d -> scan_stmt (LetStmt d) current_scope
+    | StructDecl d -> scan_stmt (StructDecl d) current_scope
+    | FnDecl d -> scan_stmt (FnDecl d) current_scope
+    | Field f ->
+        let (f : field) =
+          {
+            name = f.var_name;
+            node_idx = f.node_idx;
+            parent = current_scope;
+            typ = scan_type f.field_type current_scope;
+            value = Option.map (fun v -> scan_expr v current_scope) f.value;
+          }
         in
+        Hashtbl.add st f.node_idx (Field f);
+        Field f
+  in
   let r =
     Root
       {
