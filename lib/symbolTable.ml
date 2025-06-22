@@ -387,7 +387,7 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
   | Argument _ | Block _ | ForLoop _ | WhileLoop _ | IfStmt _ | IfResumeStmt _
   | ContinueStmt _ | BreakStmt _ | ReturnStmt _ | YieldStmt _ | NumExpr _
   | StrExpr _ | ArrayType _ | FnType _ | CoType _ | CoObjType _ | Root _ ->
-      Some it (*these items define smth so they are their own def?*)
+      Some it (*these items define smth so they are their own def*)
   | VarExpr x -> (
       match Hashtbl.find_opt st.items x.parent with
       | Some parent_scope -> (
@@ -428,6 +428,22 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
           match find_by_name x.field (StructDecl s_decl) st with
           | Some field_item -> Some field_item
           | None -> failwith "Error: child field not found within struct")
+      | Some (LetStmt ls) -> (
+          match find_by_name x.field (LetStmt ls) st with
+          | Some field_item -> Some field_item
+          | None -> failwith "Error: child field not found within let statement")
+      | Some (Argument arg) -> (
+          match find_by_name x.field (Argument arg) st with
+          | Some field_item -> Some field_item
+          | None -> failwith "Error: child field not found within argument")
+      | Some (ForLoop fl) -> (
+          match find_by_name x.field (ForLoop fl) st with
+          | Some field_item -> Some field_item
+          | None -> failwith "Error: child field not found within for loop")
+      | Some (IfResumeStmt irs) -> (
+          match find_by_name x.field (IfResumeStmt irs) st with
+          | Some field_item -> Some field_item
+          | None -> failwith "Error: child field not found within if resume statement")
       | _ -> failwith "Error: Definition not found for DotExpr")
   | _ -> failwith "Error: Definition not found for this item type"
 
