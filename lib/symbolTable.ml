@@ -74,6 +74,7 @@ and if_stmt = {
   parent : int;
   if_true : item;
   if_false : item option;
+  condition : item;
 }
 
 and if_resume_stmt = {
@@ -265,12 +266,12 @@ let get_name (it : item) : string option =
   | CoDecl x -> Some x.name
   | LetStmt x -> Some x.name
   | Argument x -> Some x.name
-  | NamedType x -> Some x.name
-  | ArrayType x -> Some "array"
-  | FnType x -> Some "function"
-  | CoType x -> Some "coroutine"
-  | CoObjType x -> Some "coroutine object"
-  | DotType x -> failwith "TODO" (*parent.child???*)
+  | NamedType _ -> None
+  | ArrayType _ -> None
+  | FnType _ -> None
+  | CoType _ -> None
+  | CoObjType _ -> None
+  | DotType _ -> None
   | IntType -> Some "int"
   | StrType -> Some "string"
   | VoidType -> Some "void"
@@ -281,7 +282,7 @@ let get_name (it : item) : string option =
   | BreakStmt _ -> None
   | AliasStmt _ -> None
   | YieldStmt _ -> None
-  | IfResumeStmt _ -> None
+  | IfResumeStmt x -> x.var
   | VarExpr x -> Some x.name
   | CallExpr _ -> None
   | DotExpr _ -> None
@@ -296,7 +297,7 @@ let get_name (it : item) : string option =
   | CreateExpr _ -> None
   | ResumeExpr _ -> None
   | Block _ -> None
-  | ForLoop _ -> None
+  | ForLoop x -> Some x.iter_var
   | WhileLoop _ -> None
   | Root _ -> None
 
@@ -391,7 +392,7 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
       | "void" -> Some VoidType
       | "null" -> Some NullType
       | _ -> (
-          match find_by_name x.name st.root st with
+          match find_by_name x.name (Option.get (get_parent (NamedType x) st)) st with
           | Some def_item -> (
               match def_item with
               | StructDecl _ -> Some def_item
@@ -644,6 +645,7 @@ let build_symbol_table (root : Ast.root) : symbolTable =
           {
             node_idx = x.node_idx;
             parent = current_scope;
+            condition = scan_expr x.condition current_scope;
             if_true = scan_stmt x.if_true x.node_idx;
             if_false =
               Option.map
@@ -668,10 +670,10 @@ let build_symbol_table (root : Ast.root) : symbolTable =
         let (s : if_resume_stmt) =
           {
             var = x.var;
+            co = scan_expr x.coroutine current_scope;
             if_ok = scan_stmt x.if_ok x.node_idx;
             if_bad =
               Option.map (fun if_bad -> scan_stmt if_bad x.node_idx) x.if_bad;
-            co = scan_expr x.coroutine current_scope;
             node_idx = x.node_idx;
             parent = current_scope;
           }
