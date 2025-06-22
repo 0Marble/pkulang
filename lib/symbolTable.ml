@@ -369,18 +369,6 @@ let rec find_by_name (name : string) (scope : item) (st : symbolTable) :
           find_by_name name parent st (*recursively search in parent scope*)
       | None -> None)
 
-(*
-  input: item & symbolTable
-  output: item
-  usage: get the item object that defines the current item variable
-  e.g.:
-  Struct Foo {};
-  let foo = Foo {};
-  ...
-  x = foo+ 10;
-  get_def(foo) -> let foo = Foo {};
-   *)
-
 let rec get_definition (it : item) (st : symbolTable) : item option =
   match it with
   | Field _ | FnDecl _ | StructDecl _ | CoDecl _ | LetStmt _ | AliasStmt _
@@ -421,7 +409,8 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
           match find_by_name x.child (StructDecl s_decl) st with
           | Some def_item -> Some def_item
           | None -> failwith "Error: child not found in struct")
-      | _ -> failwith "Error: Parent does not resolve to a struct or alias type.")
+      | _ ->
+          failwith "Error: Parent does not resolve to a struct or alias type.")
   | DotExpr x -> (
       match get_definition x.obj st with
       | Some (StructDecl s_decl) -> (
@@ -431,7 +420,8 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
       | Some (LetStmt ls) -> (
           match find_by_name x.field (LetStmt ls) st with
           | Some field_item -> Some field_item
-          | None -> failwith "Error: child field not found within let statement")
+          | None -> failwith "Error: child field not found within let statement"
+          )
       | Some (Argument arg) -> (
           match find_by_name x.field (Argument arg) st with
           | Some field_item -> Some field_item
@@ -443,7 +433,9 @@ let rec get_definition (it : item) (st : symbolTable) : item option =
       | Some (IfResumeStmt irs) -> (
           match find_by_name x.field (IfResumeStmt irs) st with
           | Some field_item -> Some field_item
-          | None -> failwith "Error: child field not found within if resume statement")
+          | None ->
+              failwith "Error: child field not found within if resume statement"
+          )
       | _ -> failwith "Error: Definition not found for DotExpr")
   | _ -> failwith "Error: Definition not found for this item type"
 
