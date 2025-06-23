@@ -1,5 +1,5 @@
 (executable
- (name pkui) (libraries pkulang))
+ (name repl) (libraries pkulang))
 
 (executable
  (name e2e) (libraries pkulang) (flags (:standard -g)))
