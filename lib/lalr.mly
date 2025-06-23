@@ -107,6 +107,48 @@
     | TokType (str,loc) -> {kind = TokType; str; loc;}
     | TokEnd (str,loc) -> {kind = TokEnd; str; loc;}
 
+let set_parent n p = 
+    match n with
+  | Invalid -> failwith "unreachable"
+  | Root _ -> failwith "no parent on root"
+  | FnDecl x -> x.parent := p
+  | StructDecl x -> x.parent := p
+  | CoDecl x -> x.parent := p
+  | LetStmt x -> x.parent := p
+  | AliasStmt x -> x.parent := p
+  | Argument x -> x.parent := p
+  | NamedType x -> x.parent := p
+  | ArrayType x -> x.parent := p
+  | DotType x -> x.parent := p
+  | FnType x -> x.parent := p
+  | CoType x -> x.parent := p
+  | CoObjType x -> x.parent := p
+  | Block x -> x.parent := p
+  | Field x -> x.parent := p
+  | BinExpr x -> x.parent := p
+  | UnaryExpr x -> x.parent := p
+  | CallExpr x -> x.parent := p
+  | IndexExpr x -> x.parent := p
+  | DotExpr x -> x.parent := p
+  | VarExpr x -> x.parent := p
+  | NumExpr x -> x.parent := p
+  | StringExpr x -> x.parent := p
+  | ArrayLiteral x -> x.parent := p
+  | NullLiteral x -> x.parent := p
+  | NewExpr x -> x.parent := p
+  | YieldStmt x -> x.parent := p
+  | CreateExpr x -> x.parent := p
+  | ResumeExpr x -> x.parent := p
+  | ForLoop x -> x.parent := p
+  | WhileLoop x -> x.parent := p
+  | ContinueStmt x -> x.parent := p
+  | BreakStmt x -> x.parent := p
+  | IfStmt x -> x.parent := p
+  | IfResumeStmt x -> x.parent := p
+  | ReturnStmt x -> x.parent := p
+  | FieldLiteral x -> x.parent := p
+
+
 %}
 
 %%
@@ -119,6 +161,7 @@
 root: 
     | stmts = list(top_stmt); fin = TokEnd { 
     let n = ({stmts; loc = snd fin; }:root) in
+    List.iter (fun x -> set_parent x (Root n)) (Ast.node_children (Root n));
     n }
 
 top_stmt:
@@ -130,7 +173,7 @@ top_stmt:
 
 fn_decl:
     | start=TokFn; name=TokIdent; TokLp; args=arglist(argument); TokRp; ret_type=typ; body=fn_body {
-    let (n:fn_decl) = {name=fst name; args; ret=ret_type; body; loc = snd start} in 
+    let (n:fn_decl) = {parent=ref Invalid; name=fst name; args; ret=ret_type; body; loc = snd start} in 
     n } 
 
 fn_body:
@@ -138,12 +181,12 @@ fn_body:
 
 argument:
     | name=TokIdent; TokColon; arg_type=typ {
-    let n = {name=fst name; typ=arg_type;  loc=snd name; } in
+    let n = {parent=ref Invalid;name=fst name; typ=arg_type;  loc=snd name; } in
     n }
 
 struct_decl:
     | TokStruct; name=TokIdent; TokLb; decls=list(decl); TokRb { 
-    let n = {name=fst name; decls;  loc = snd name} in
+    let n = {parent=ref Invalid;name=fst name; decls;  loc = snd name} in
     n }
 
 decl:
@@ -159,27 +202,27 @@ field:
 
 field_with_val: 
     | var_name=TokIdent; TokColon; field_type=typ; TokAssign; value=expr; TokComa {
-    let n = {name=fst var_name; typ=field_type; value = Some value; loc = snd var_name } in 
+    let n = {parent=ref Invalid;name=fst var_name; typ=field_type; value = Some value; loc = snd var_name } in 
     n }
 
 field_no_val: 
     | var_name=TokIdent; TokColon; field_type=typ; TokComa {
-    let n = {name=fst var_name; typ=field_type; value=None; loc = snd var_name } in
+    let n = {parent=ref Invalid;name=fst var_name; typ=field_type; value=None; loc = snd var_name } in
     n }
 
 co_decl:
     | start=TokCo; name=TokIdent; TokLp; args=arglist(argument); TokRp; yield_type=typ; body=fn_body {
-    let n = {name=fst name; args; yield=yield_type; body; loc = snd start;  } in   
+    let n = {parent=ref Invalid;name=fst name; args; yield=yield_type; body; loc = snd start;  } in   
     n }
 
 let_stmt:
     | TokLet; var_name=TokIdent; TokColon; var_type=typ; TokAssign; value=expr; TokSemi {
-    let (n:let_stmt) = {name = fst var_name; typ = var_type; value; loc = snd var_name; } in 
+let (n:let_stmt) = {parent=ref Invalid;name = fst var_name; typ = var_type; value; loc = snd var_name; } in 
     n }
 
 alias_stmt: 
     | TokType; type_name=TokIdent; TokAssign; other_type=typ; TokSemi {
-    let (n:alias_stmt) = {name=fst type_name; typ=other_type; loc = snd type_name; } in
+    let (n:alias_stmt) = {parent=ref Invalid;name=fst type_name; typ=other_type; loc = snd type_name; } in
     n }
    
 
@@ -196,34 +239,34 @@ parent_type:
 
 named_type:
     | name=TokIdent {
-    let n = ({name=fst name; loc = snd name;}:named_type) in 
+    let n = ({parent=ref Invalid;name=fst name; loc = snd name;}:named_type) in 
     n }
 
 array_type:
     | start=TokLs; elem=typ; TokRs {
-    let n = {elem; loc = snd start;} in
+    let n = {parent=ref Invalid;elem; loc = snd start;} in
     n }
 
 fn_type:
     | start=TokFn; TokLp; args=arglist(typ); TokRp; ret=typ {
-    let n = {args; ret; loc = snd start;} in 
+    let n = {parent=ref Invalid;args; ret; loc = snd start;} in 
     n }
 
 
 co_type: 
     | start=TokCo; TokLp; args=arglist(typ); TokRp; yield=typ {
-    let n = {args; yield; loc = snd start; } in
+    let n = {parent=ref Invalid;args; yield; loc = snd start; } in
     n }
 
 co_obj_type:
     | start=TokCo; yield=typ {
-    let n = {yield; loc = snd start;  } in  
+    let n = {parent=ref Invalid;yield; loc = snd start;  } in  
     n }
 
 
 dot_type:
     | parent=parent_type; TokDot; child=TokIdent {
-    let n = {namespace=parent; name=fst child; loc = snd child;} in
+    let n = {parent=ref Invalid;namespace=parent; name=fst child; loc = snd child;} in
     n }
 
 
@@ -249,29 +292,29 @@ stmt:
 
 block:
     | start=TokLb; stmts=list(stmt); TokRb {
-    let n = {stmts; loc = snd start;} in
+    let n = {parent=ref Invalid;stmts; loc = snd start;} in
     n }
 
 
 for_loop:
     | TokFor; TokLp; iter_var=TokIdent; TokColon; iterator=expr; TokRp; body=body_stmt; {
-    let n = {var=fst iter_var; iterator; body; loc = snd iter_var;} in
+    let n = {parent=ref Invalid;var=fst iter_var; iterator; body; loc = snd iter_var;} in
     n }
 
 while_loop:
     | start = TokWhile; TokLp; condition=expr; TokRp; body=body_stmt; {
-    let n = {condition; body; loc = snd start;} in
+    let n = {parent=ref Invalid;condition; body; loc = snd start;} in
     n }
 
 continue_stmt:
     | start=TokContinue; TokSemi; {
-    let n = ({loc = snd start;}:continue_stmt) in   
+    let n = ({parent=ref Invalid;loc = snd start;}:continue_stmt) in   
     n }
 
 
 break_stmt:
     | start=TokBreak; TokSemi; {
-    let n = ({loc = snd start;}:break_stmt) in
+    let n = ({parent=ref Invalid;loc = snd start;}:break_stmt) in
     n }
 
 if_stmt:
@@ -280,12 +323,12 @@ if_stmt:
 
 if_stmt_no_else:
     | start=TokIf; TokLp; condition=expr; TokRp; if_true=body_stmt;  {
-    let n = {condition; if_true; if_false=None; loc = snd start;} in
+    let n = {parent=ref Invalid;condition; if_true; if_false=None; loc = snd start;} in
     n }
 
 if_stmt_with_else:
     | start=TokIf; TokLp; condition=expr; TokRp; if_true=body_stmt; TokElse; if_false=stmt; {
-    let n = {condition; if_true; if_false = Some if_false; loc = snd start;} in
+    let n = {parent=ref Invalid;condition; if_true; if_false = Some if_false; loc = snd start;} in
     n }
 
 if_resume_stmt:
@@ -300,22 +343,22 @@ if_resume_stmt_base:
 
 if_resume_stmt_with_var:
     | start=TokIf; TokResume; TokLp; var=TokIdent; TokColon; coroutine=expr; TokRp; if_ok=body_stmt; {
-    let n = { var=Some (fst var); coroutine; if_ok; if_bad=None; loc = snd start;} in
+    let n = {parent=ref Invalid; var=Some (fst var); coroutine; if_ok; if_bad=None; loc = snd start;} in
     n }
 
 if_resume_stmt_void:
     | start=TokIf; TokResume; TokLp; coroutine=expr; TokRp; if_ok=body_stmt; {
-    let n = { var=None; coroutine; if_ok; if_bad=None; loc = snd start;} in
+    let n = {parent=ref Invalid; var=None; coroutine; if_ok; if_bad=None; loc = snd start;} in
     n }
 
 yield_stmt:
     | start=TokYield; value=option(expr); TokSemi; {
-    let n = ({value; loc = snd start;}:yield_stmt) in
+    let n = ({parent=ref Invalid;value; loc = snd start;}:yield_stmt) in
     n }
 
 return_stmt:
     | start=TokReturn; value = option(expr); TokSemi; {
-    let n = {value; loc = snd start;} in
+    let n = {parent=ref Invalid;value; loc = snd start;} in
     n }
 
 expr_stmt:
@@ -349,41 +392,41 @@ assign_op:
 
 expr:
     | lhs=expr; op=TokAssign; rhs=callable_expr {
-    let n = {lhs; rhs; op=to_op (TokAssign op); loc = snd op; } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (TokAssign op); loc = snd op; } in
     BinExpr n }
     | lhs=expr; op=assign_op; rhs=callable_expr {
-    let n = {lhs; rhs; op=to_op (fst op); loc = snd (snd op); } in
-    let n = {lhs; rhs=(BinExpr n); op=to_op (TokAssign (snd op)); loc = snd (snd op); } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (fst op); loc = snd (snd op); } in
+    let n = {parent=ref Invalid;lhs; rhs=(BinExpr n); op=to_op (TokAssign (snd op)); loc = snd (snd op); } in
     BinExpr n }
     | expr0 {$1}
 
 expr0:
     | lhs=expr0; op=binop0; rhs=expr1; {
-    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr1 {$1}
 
 expr1:
     | lhs=expr1; op=binop1; rhs=expr2; {
-    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr2 {$1}
 
 expr2:
     | lhs=expr2; op=binop2; rhs=expr3; {
-    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr3 {$1}
 
 expr3:
     | lhs=expr3; op=binop3; rhs=expr4; {
-    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr4 {$1}
 
 expr4:
     | lhs=expr4; op=binop4; rhs=expr5; {
-    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
+    let n = {parent=ref Invalid;lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr5 {$1}
 
@@ -411,66 +454,66 @@ unop:
 
 unary_expr:
     | op=unop; sub_expr=expr5; {
-    let n = {op=to_op (fst op); sub_expr; loc = snd op; } in
+    let n = {parent=ref Invalid;op=to_op (fst op); sub_expr; loc = snd op; } in
     n }
 
 call_expr:
     | fn=callable_expr; loc=TokLp; args=arglist(expr); TokRp; {
-    let n = {fn; args; loc = snd loc;} in
+    let n = {parent=ref Invalid;fn; args; loc = snd loc;} in
     n }
 
 index_expr:
     | arr=callable_expr; loc=TokLs; ids=arglist(expr); TokRs; {
-    let n = {arr;ids; loc=snd loc;} in
+    let n = {parent=ref Invalid;arr;ids; loc=snd loc;} in
     n }
 
 dot_expr:
     | obj=callable_expr; TokDot; field=TokIdent; {
-    let n = {obj;field=fst field; loc = snd field; } in
+    let n = {parent=ref Invalid;obj;field=fst field; loc = snd field; } in
     n }
 
 var_expr:
     | name=TokIdent; {
-    let n = {name=fst name; loc = snd name;} in
+    let n = {parent=ref Invalid;name=fst name; loc = snd name;} in
     n }
 
 num_expr:
     | num=TokNumber; {
-    let n = {num=int_of_string (fst num); loc = snd num;} in
+    let n = {parent=ref Invalid;num=int_of_string (fst num); loc = snd num;} in
     n }
 
 string_expr:
     | str=TokString; {
-    let n = {str=fst str; loc = snd str;} in
+    let n = {parent=ref Invalid;str=fst str; loc = snd str;} in
     n }
 
 array_literal:
     | start=TokLs; elems=arglist(expr); TokRs; {
-    let n = {elems; loc = snd start;} in
+    let n = {parent=ref Invalid;elems; loc = snd start;} in
     n }
 
 null_literal:
     | null=TokNull; {
-    let n = ({loc = snd null;}:null_literal) in
+    let n = ({parent=ref Invalid;loc = snd null;}:null_literal) in
     n }
 
 new_expr:
     | start=TokNew; typ=typ; TokLb; fields=arglist(field_literal); TokRb; {
-    let n = {typ; fields; loc = snd start;} in
+    let n = {parent=ref Invalid;typ; fields; loc = snd start;} in
     n }
     
 
 field_literal:
     | name=TokIdent; TokColon; value=expr; {
-    let n = ({name=fst name; value; loc = snd name;}:field_literal) in
+    let n = ({parent=ref Invalid;name=fst name; value; loc = snd name;}:field_literal) in
     n }
 
 resume_expr:
     | start=TokResume; TokLp; coroutine=expr; TokRp; {
-    let n = ({coroutine; loc = snd start; }:resume_expr) in
+    let n = ({parent=ref Invalid;coroutine; loc = snd start; }:resume_expr) in
     n }
 
 create_expr:
     | start=TokCreate; TokLp; args=arglist(expr); TokRp; {
-    let n = {coroutine=List.hd args; args=List.tl args; loc = snd start; } in
+    let n = {parent=ref Invalid;coroutine=List.hd args; args=List.tl args; loc = snd start; } in
     n }
