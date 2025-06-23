@@ -46,4 +46,5 @@
 (test
  (name codegen)
  (modules codegen)
+ (flags (:standard -g))
  (libraries pkulang alcotest))

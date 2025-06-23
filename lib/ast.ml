@@ -1,9 +1,4 @@
-type root = {
-  stmts : top_stmt list;
-  all_nodes : (int, node) Hashtbl.t;
-  node_idx : int;
-  loc : Location.location;
-}
+type root = { stmts : top_stmt list; loc : Location.location }
 
 and top_stmt =
   | FnDecl of fn_decl
@@ -15,49 +10,30 @@ and top_stmt =
 and fn_decl = {
   name : string;
   args : argument list;
-  ret_type : typ;
+  ret : typ;
   body : stmt;
-  node_idx : int;
   loc : Location.location;
 }
 
-and struct_decl = {
-  name : string;
-  decls : decl list;
-  node_idx : int;
-  loc : Location.location;
-}
+and struct_decl = { name : string; decls : decl list; loc : Location.location }
 
 and co_decl = {
   name : string;
   args : argument list;
-  yield_type : typ;
+  yield : typ;
   body : stmt;
-  node_idx : int;
   loc : Location.location;
 }
 
 and let_stmt = {
-  var_name : string;
-  var_type : typ;
-  value : expr;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and alias_stmt = {
-  type_name : string;
-  other_type : typ;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and argument = {
   name : string;
-  arg_type : typ;
-  node_idx : int;
+  typ : typ;
+  value : expr;
   loc : Location.location;
 }
+
+and alias_stmt = { name : string; typ : typ; loc : Location.location }
+and argument = { name : string; typ : typ; loc : Location.location }
 
 and typ =
   | NamedType of named_type
@@ -67,13 +43,12 @@ and typ =
   | CoType of co_type
   | CoObjType of co_obj_type
 
-and block = { stmts : stmt list; node_idx : int; loc : Location.location }
+and block = { stmts : stmt list; loc : Location.location }
 
 and field = {
-  var_name : string;
-  field_type : typ;
+  name : string;
+  typ : typ;
   value : expr option;
-  node_idx : int;
   loc : Location.location;
 }
 
@@ -99,31 +74,12 @@ and expr =
   | CreateExpr of create_expr
   | ResumeExpr of resume_expr
 
-and named_type = { name : string; node_idx : int; loc : Location.location }
-and array_type = { elem : typ; node_idx : int; loc : Location.location }
-
-and dot_type = {
-  parent : typ;
-  child : string;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and fn_type = {
-  args : typ list;
-  ret : typ;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and co_type = {
-  args : typ list;
-  yield : typ;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and co_obj_type = { yield : typ; node_idx : int; loc : Location.location }
+and named_type = { name : string; loc : Location.location }
+and array_type = { elem : typ; loc : Location.location }
+and dot_type = { namespace : typ; name : string; loc : Location.location }
+and fn_type = { args : typ list; ret : typ; loc : Location.location }
+and co_type = { args : typ list; yield : typ; loc : Location.location }
+and co_obj_type = { yield : typ; loc : Location.location }
 
 and stmt =
   | Block of block
@@ -146,119 +102,68 @@ and bin_expr = {
   lhs : expr;
   rhs : expr;
   op : Tokenizer.token;
-  node_idx : int;
   loc : Location.location;
 }
 
 and unary_expr = {
   sub_expr : expr;
   op : Tokenizer.token;
-  node_idx : int;
   loc : Location.location;
 }
 
-and call_expr = {
-  fn : expr;
-  params : expr list;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and index_expr = {
-  arr : expr;
-  idx : expr list;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and dot_expr = {
-  obj : expr;
-  field : string;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and var_expr = { name : string; node_idx : int; loc : Location.location }
-and num_expr = { num : int; node_idx : int; loc : Location.location }
-and string_expr = { str : string; node_idx : int; loc : Location.location }
-
-and array_literal = {
-  elems : expr list;
-  node_idx : int;
-  loc : Location.location;
-}
+and call_expr = { fn : expr; args : expr list; loc : Location.location }
+and index_expr = { arr : expr; ids : expr list; loc : Location.location }
+and dot_expr = { obj : expr; field : string; loc : Location.location }
+and var_expr = { name : string; loc : Location.location }
+and num_expr = { num : int; loc : Location.location }
+and string_expr = { str : string; loc : Location.location }
+and array_literal = { elems : expr list; loc : Location.location }
 
 and new_expr = {
   typ : typ;
   fields : field_literal list;
-  node_idx : int;
   loc : Location.location;
 }
 
-and null_literal = { node_idx : int; loc : Location.location }
-
-and yield_stmt = {
-  value : expr option;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and resume_expr = { coroutine : expr; node_idx : int; loc : Location.location }
+and null_literal = { loc : Location.location }
+and yield_stmt = { value : expr option; loc : Location.location }
+and resume_expr = { coroutine : expr; loc : Location.location }
 
 and create_expr = {
   coroutine : expr;
-  params : expr list;
-  node_idx : int;
+  args : expr list;
   loc : Location.location;
 }
 
 and for_loop = {
-  iter_var : string;
+  var : string;
   iterator : expr;
   body : stmt;
-  node_idx : int;
   loc : Location.location;
 }
 
-and while_loop = {
-  condition : expr;
-  body : stmt;
-  node_idx : int;
-  loc : Location.location;
-}
-
-and continue_stmt = { node_idx : int; loc : Location.location }
-and break_stmt = { node_idx : int; loc : Location.location }
+and while_loop = { condition : expr; body : stmt; loc : Location.location }
+and continue_stmt = { loc : Location.location }
+and break_stmt = { loc : Location.location }
 
 and if_stmt = {
   condition : expr;
   if_true : stmt;
   if_false : stmt option;
-  node_idx : int;
   loc : Location.location;
 }
 
-and return_stmt = {
-  value : expr option;
-  node_idx : int;
-  loc : Location.location;
-}
+and return_stmt = { value : expr option; loc : Location.location }
 
 and if_resume_stmt = {
   var : string option;
   coroutine : expr;
   if_ok : stmt;
   if_bad : stmt option;
-  node_idx : int;
   loc : Location.location;
 }
 
-and field_literal = {
-  name : string;
-  value : expr;
-  node_idx : int;
-  loc : Location.location;
-}
+and field_literal = { name : string; value : expr; loc : Location.location }
 
 and node =
   | Root of root
@@ -298,7 +203,6 @@ and node =
   | IfResumeStmt of if_resume_stmt
   | ReturnStmt of return_stmt
   | FieldLiteral of field_literal
-  | Invalid
 
 let type_to_node (t : typ) : node =
   match t with
@@ -398,7 +302,6 @@ let node_loc n =
   | ReturnStmt x -> x.loc
   | FieldLiteral x -> x.loc
   | IfResumeStmt x -> x.loc
-  | Invalid -> failwith "unreachable"
 
 let rec node_to_str (n : node) : string =
   match n with
@@ -418,7 +321,7 @@ let rec node_to_str (n : node) : string =
           s x.args
       in
       Printf.sprintf "%s %s %s)" s
-        (x.ret_type |> type_to_node |> node_to_str)
+        (x.ret |> type_to_node |> node_to_str)
         (x.body |> stmt_to_node |> node_to_str)
   | StructDecl x ->
       Printf.sprintf "%s)"
@@ -435,25 +338,24 @@ let rec node_to_str (n : node) : string =
           s x.args
       in
       Printf.sprintf "%s %s %s)" s
-        (x.yield_type |> type_to_node |> node_to_str)
+        (x.yield |> type_to_node |> node_to_str)
         (x.body |> stmt_to_node |> node_to_str)
   | LetStmt x ->
-      Printf.sprintf "(let %s %s %s)" x.var_name
-        (x.var_type |> type_to_node |> node_to_str)
+      Printf.sprintf "(let %s %s %s)" x.name
+        (x.typ |> type_to_node |> node_to_str)
         (x.value |> expr_to_node |> node_to_str)
   | AliasStmt x ->
-      Printf.sprintf "(alias %s %s)" x.type_name
-        (x.other_type |> type_to_node |> node_to_str)
+      Printf.sprintf "(alias %s %s)" x.name
+        (x.typ |> type_to_node |> node_to_str)
   | Argument x ->
-      Printf.sprintf "(arg %s %s)" x.name
-        (x.arg_type |> type_to_node |> node_to_str)
+      Printf.sprintf "(arg %s %s)" x.name (x.typ |> type_to_node |> node_to_str)
   | NamedType x -> Printf.sprintf "(type %s)" x.name
   | ArrayType x ->
       Printf.sprintf "(array %s)" (x.elem |> type_to_node |> node_to_str)
   | DotType x ->
       Printf.sprintf "(dot_type %s %s)"
-        (x.parent |> type_to_node |> node_to_str)
-        x.child
+        (x.namespace |> type_to_node |> node_to_str)
+        x.name
   | FnType x ->
       let s = "(fn_type " in
       let s =
@@ -484,8 +386,8 @@ let rec node_to_str (n : node) : string =
       in
       Printf.sprintf "%s)" s
   | Field x ->
-      Printf.sprintf "(field %s %s %s)" x.var_name
-        (x.field_type |> type_to_node |> node_to_str)
+      Printf.sprintf "(field %s %s %s)" x.name
+        (x.typ |> type_to_node |> node_to_str)
         (x.value
         |> Option.map (fun n -> n |> expr_to_node |> node_to_str)
         |> Option.value ~default:"_")
@@ -502,13 +404,13 @@ let rec node_to_str (n : node) : string =
       List.fold_left
         (fun s n -> Printf.sprintf "%s %s" s (n |> expr_to_node |> node_to_str))
         (Printf.sprintf "(call %s" (x.fn |> expr_to_node |> node_to_str))
-        x.params
+        x.args
       |> Printf.sprintf "%s)"
   | IndexExpr x ->
       List.fold_left
         (fun s n -> Printf.sprintf "%s %s" s (n |> expr_to_node |> node_to_str))
         (Printf.sprintf "(idx %s" (x.arr |> expr_to_node |> node_to_str))
-        x.idx
+        x.ids
       |> Printf.sprintf "%s)"
   | DotExpr x ->
       Printf.sprintf "(dot %s %s)"
@@ -547,12 +449,12 @@ let rec node_to_str (n : node) : string =
         (fun acc y -> acc ^ " " ^ (y |> expr_to_node |> node_to_str))
         (Printf.sprintf "(create %s"
            (x.coroutine |> expr_to_node |> node_to_str))
-        x.params
+        x.args
       ^ ")"
   | ResumeExpr x ->
       Printf.sprintf "(resume %s)" (x.coroutine |> expr_to_node |> node_to_str)
   | ForLoop x ->
-      Printf.sprintf "(for %s %s %s)" x.iter_var
+      Printf.sprintf "(for %s %s %s)" x.var
         (x.iterator |> expr_to_node |> node_to_str)
         (x.body |> stmt_to_node |> node_to_str)
   | WhileLoop x ->
@@ -581,4 +483,58 @@ let rec node_to_str (n : node) : string =
   | FieldLiteral x ->
       Printf.sprintf "(field_literal %s %s)" x.name
         (x.value |> expr_to_node |> node_to_str)
-  | Invalid -> "?"
+
+let node_children n =
+  match n with
+  | Root x -> List.map (fun y -> top_stmt_to_stmt y |> stmt_to_node) x.stmts
+  | FnDecl x ->
+      type_to_node x.ret :: stmt_to_node x.body
+      :: List.map (fun y -> Argument y) x.args
+  | StructDecl x -> List.map decl_to_node x.decls
+  | CoDecl x ->
+      type_to_node x.yield :: stmt_to_node x.body
+      :: List.map (fun y -> Argument y) x.args
+  | LetStmt x -> [ expr_to_node x.value; type_to_node x.typ ]
+  | AliasStmt x -> [ type_to_node x.typ ]
+  | Argument x -> [ type_to_node x.typ ]
+  | NamedType _ -> []
+  | ArrayType x -> [ type_to_node x.elem ]
+  | DotType x -> [ type_to_node x.namespace ]
+  | FnType x -> type_to_node x.ret :: List.map type_to_node x.args
+  | CoType x -> type_to_node x.yield :: List.map type_to_node x.args
+  | CoObjType x -> [ type_to_node x.yield ]
+  | Block x -> List.map stmt_to_node x.stmts
+  | Field x -> [ type_to_node x.typ ]
+  | BinExpr x -> [ expr_to_node x.lhs; expr_to_node x.rhs ]
+  | UnaryExpr x -> [ expr_to_node x.sub_expr ]
+  | CallExpr x -> expr_to_node x.fn :: List.map expr_to_node x.args
+  | IndexExpr x -> expr_to_node x.arr :: List.map expr_to_node x.ids
+  | DotExpr x -> [ expr_to_node x.obj ]
+  | VarExpr _ -> []
+  | NumExpr _ -> []
+  | StringExpr _ -> []
+  | ArrayLiteral x -> List.map expr_to_node x.elems
+  | NullLiteral _ -> []
+  | NewExpr x ->
+      type_to_node x.typ :: List.map (fun y -> FieldLiteral y) x.fields
+  | YieldStmt x -> x.value |> Option.map expr_to_node |> Option.to_list
+  | CreateExpr x -> expr_to_node x.coroutine :: List.map expr_to_node x.args
+  | ResumeExpr x -> [ expr_to_node x.coroutine ]
+  | ForLoop x -> [ expr_to_node x.iterator; stmt_to_node x.body ]
+  | WhileLoop x -> [ expr_to_node x.condition; stmt_to_node x.body ]
+  | ContinueStmt _ -> []
+  | BreakStmt _ -> []
+  | IfStmt x ->
+      expr_to_node x.condition :: stmt_to_node x.if_true
+      :: (x.if_false |> Option.map stmt_to_node |> Option.to_list)
+  | IfResumeStmt x ->
+      expr_to_node x.coroutine :: stmt_to_node x.if_ok
+      :: (x.if_bad |> Option.map stmt_to_node |> Option.to_list)
+  | ReturnStmt x -> x.value |> Option.map expr_to_node |> Option.to_list
+  | FieldLiteral x -> [ expr_to_node x.value ]
+
+let visit_all_nodes (map : node -> 't) (root : root) : 't list =
+  let rec visit_node n =
+    map n :: (node_children n |> List.map visit_node |> List.concat)
+  in
+  visit_node (Root root)

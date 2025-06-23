@@ -51,9 +51,9 @@ let codegen (src : string) (fn_list : Ast.node list)
         reg
   in
 
-  let allocate_reg node_idx registers =
+  let allocate_reg (node : Ast.node) registers =
     let reg = Stack.Register (Hashtbl.length registers) in
-    Hashtbl.add registers node_idx reg;
+    Hashtbl.add registers node reg;
     reg
   in
   let op_to_jump (op : Runtime.operand) : Runtime.jump_target =
@@ -70,8 +70,8 @@ let codegen (src : string) (fn_list : Ast.node list)
       Error.fail_at_spot "Codegen error" src
         (Ast.expr_to_node e |> Ast.node_loc)
         err
-  and codegen_expr' (e : Ast.expr) (registers : (int, Stack.location) Hashtbl.t)
-      : Runtime.operand =
+  and codegen_expr' (e : Ast.expr)
+      (registers : (Ast.node, Stack.location) Hashtbl.t) : Runtime.operand =
     match e with
     | BinExpr x when x.op.kind = TokAssign -> (
         let rhs = codegen_expr x.rhs registers in
@@ -85,8 +85,8 @@ let codegen (src : string) (fn_list : Ast.node list)
             let def = get_definition (DotExpr y) in
             match def with
             | `Node (Field z) ->
-                let reg = allocate_reg y.node_idx registers in
-                emit { cmd = FieldSet (obj, z.var_name, rhs); loc = x.loc };
+                let reg = allocate_reg (DotExpr y) registers in
+                emit { cmd = FieldSet (obj, z.name, rhs); loc = x.loc };
                 Location reg
             | `Node (LetStmt z) ->
                 let reg = get_or_define_global (LetStmt z) in
@@ -107,9 +107,9 @@ let codegen (src : string) (fn_list : Ast.node list)
                   index_set_expr arr ids
             in
             let arr = codegen_expr y.arr registers in
-            let reg = allocate_reg y.node_idx registers in
+            let reg = allocate_reg (IndexExpr y) registers in
             emit { cmd = Assign (reg, arr); loc = y.loc };
-            Location (index_set_expr reg y.idx)
+            Location (index_set_expr reg y.ids)
         | _ -> (
             let lhs = codegen_expr x.lhs registers in
             match lhs with
@@ -120,7 +120,7 @@ let codegen (src : string) (fn_list : Ast.node list)
     | BinExpr x ->
         let lhs = codegen_expr x.lhs registers in
         let rhs = codegen_expr x.rhs registers in
-        let res = allocate_reg x.node_idx registers in
+        let res = allocate_reg (BinExpr x) registers in
         let (cmd : Runtime.command_kind) =
           match x.op.kind with
           | TokAdd -> Add (res, lhs, rhs)
@@ -151,7 +151,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         Location res
     | UnaryExpr x ->
         let sub = codegen_expr x.sub_expr registers in
-        let reg = allocate_reg x.node_idx registers in
+        let reg = allocate_reg (UnaryExpr x) registers in
         (match x.op.kind with
         | TokSub -> emit { cmd = Sub (reg, Number 0, sub); loc = x.loc }
         | TokNot -> emit { cmd = Sub (reg, Number 1, sub); loc = x.loc }
@@ -159,7 +159,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         Location reg
     | CallExpr x -> (
         let args =
-          List.map (fun a -> codegen_expr a registers) x.params |> Array.of_list
+          List.map (fun a -> codegen_expr a registers) x.args |> Array.of_list
         in
         match x.fn with
         | VarExpr _
@@ -171,7 +171,7 @@ let codegen (src : string) (fn_list : Ast.node list)
             emit { cmd = Builtin (args, "print"); loc = x.loc };
             Null
         | DotExpr y ->
-            let applied_len = List.length x.params in
+            let applied_len = List.length x.args in
             let expected_len =
               match get_definition (DotExpr y) with
               | `Node (FnDecl z) -> List.length z.args
@@ -186,17 +186,17 @@ let codegen (src : string) (fn_list : Ast.node list)
               else failwith "Error: unsupported argument count"
             in
             let fptr = codegen_expr x.fn registers |> op_to_jump in
-            let res = allocate_reg x.node_idx registers in
+            let res = allocate_reg (CallExpr x) registers in
             emit { cmd = Call (res, args, fptr); loc = x.loc };
             Location res
         | _ ->
             let fptr = codegen_expr x.fn registers |> op_to_jump in
-            let res = allocate_reg x.node_idx registers in
+            let res = allocate_reg (CallExpr x) registers in
             emit { cmd = Call (res, args, fptr); loc = x.loc };
             Location res)
     | IndexExpr x ->
         let arr = codegen_expr x.arr registers in
-        let reg = allocate_reg x.node_idx registers in
+        let reg = allocate_reg (IndexExpr x) registers in
         emit { cmd = Assign (reg, arr); loc = x.loc };
         let elem =
           List.fold_left
@@ -204,7 +204,7 @@ let codegen (src : string) (fn_list : Ast.node list)
               let idx = codegen_expr idx registers in
               emit { cmd = IndexGet (arr, Location arr, idx); loc = x.loc };
               arr)
-            reg x.idx
+            reg x.ids
         in
         Location elem
     | DotExpr x -> (
@@ -212,8 +212,8 @@ let codegen (src : string) (fn_list : Ast.node list)
         let def = get_definition (DotExpr x) in
         match def with
         | `Node (Field y) ->
-            let reg = allocate_reg x.node_idx registers in
-            emit { cmd = FieldGet (reg, obj, y.var_name); loc = x.loc };
+            let reg = allocate_reg (DotExpr x) registers in
+            emit { cmd = FieldGet (reg, obj, y.name); loc = x.loc };
             Location reg
         | `Node (LetStmt y) -> Location (get_or_define_global (LetStmt y))
         | `Node (FnDecl y) -> Number (Hashtbl.find function_table (FnDecl y))
@@ -225,14 +225,15 @@ let codegen (src : string) (fn_list : Ast.node list)
         match def with
         | `Node (LetStmt y) ->
             let loc =
-              match Hashtbl.find_opt registers y.node_idx with
+              match Hashtbl.find_opt registers (LetStmt y) with
               | Some local -> local
               | _ -> get_or_define_global (LetStmt y)
             in
             Location loc
-        | `Node (Argument y) -> Location (Hashtbl.find registers y.node_idx)
-        | `Node (ForLoop y) -> Location (Hashtbl.find registers y.node_idx)
-        | `Node (IfResumeStmt y) -> Location (Hashtbl.find registers y.node_idx)
+        | `Node (Argument y) -> Location (Hashtbl.find registers (Argument y))
+        | `Node (ForLoop y) -> Location (Hashtbl.find registers (ForLoop y))
+        | `Node (IfResumeStmt y) ->
+            Location (Hashtbl.find registers (IfResumeStmt y))
         | `Node (FnDecl y) -> Number (Hashtbl.find function_table (FnDecl y))
         | `Node (CoDecl y) -> Number (Hashtbl.find function_table (CoDecl y))
         | `Builtin s -> Number (Hashtbl.find builtins_table s)
@@ -240,12 +241,12 @@ let codegen (src : string) (fn_list : Ast.node list)
         | _ -> failwith "Error: unsupported definition for var")
     | NumExpr x -> Number x.num
     | StringExpr x ->
-        let reg = allocate_reg x.node_idx registers in
+        let reg = allocate_reg (StringExpr x) registers in
         emit { cmd = New reg; loc = x.loc };
         emit { cmd = StringLiteral (reg, x.str); loc = x.loc };
         Location reg
     | ArrayLiteral x ->
-        let arr = allocate_reg x.node_idx registers in
+        let arr = allocate_reg (ArrayLiteral x) registers in
         emit { cmd = New arr; loc = x.loc };
         emit { cmd = Resize (arr, Number (List.length x.elems)); loc = x.loc };
         List.iteri
@@ -256,7 +257,7 @@ let codegen (src : string) (fn_list : Ast.node list)
         Location arr
     | NullLiteral _ -> Null
     | NewExpr x ->
-        let obj = allocate_reg x.node_idx registers in
+        let obj = allocate_reg (NewExpr x) registers in
         emit { cmd = New obj; loc = x.loc };
         (match get_definition (Ast.type_to_node x.typ) with
         | `Node (StructDecl y) ->
@@ -264,12 +265,11 @@ let codegen (src : string) (fn_list : Ast.node list)
               (fun (d : Ast.decl) ->
                 match d with
                 | Field z -> (
-                    emit { cmd = AddField (obj, z.var_name); loc = x.loc };
+                    emit { cmd = AddField (obj, z.name); loc = x.loc };
                     match z.value with
                     | Some v ->
                         let v = codegen_expr v registers in
-                        emit
-                          { cmd = FieldSet (obj, z.var_name, v); loc = x.loc }
+                        emit { cmd = FieldSet (obj, z.name, v); loc = x.loc }
                     | _ -> ())
                 | _ -> ())
               y.decls
@@ -282,14 +282,14 @@ let codegen (src : string) (fn_list : Ast.node list)
         Location obj
     | CreateExpr x ->
         let fptr = codegen_expr x.coroutine registers |> op_to_jump in
-        let res = allocate_reg x.node_idx registers in
+        let res = allocate_reg (CreateExpr x) registers in
         let args =
-          List.map (fun a -> codegen_expr a registers) x.params |> Array.of_list
+          List.map (fun a -> codegen_expr a registers) x.args |> Array.of_list
         in
         emit { cmd = Create (res, args, fptr); loc = x.loc };
         Location res
     | ResumeExpr x ->
-        let res = allocate_reg x.node_idx registers in
+        let res = allocate_reg (ResumeExpr x) registers in
         let coro = codegen_expr x.coroutine registers in
         emit { cmd = Resume (res, coro, trap_for_resume); loc = x.loc };
         Location res
@@ -307,13 +307,13 @@ let codegen (src : string) (fn_list : Ast.node list)
         List.map (fun y -> codegen_stmt this_loop_start y registers) x.stmts
         |> List.concat
     | LetStmt x ->
-        let reg = allocate_reg x.node_idx registers in
+        let reg = allocate_reg (LetStmt x) registers in
         let value = codegen_expr x.value registers in
         emit { cmd = Assign (reg, value); loc = x.loc };
         []
     | ForLoop x ->
         let coro = codegen_expr x.iterator registers in
-        let reg = allocate_reg x.node_idx registers in
+        let reg = allocate_reg (ForLoop x) registers in
         let start = !ptr in
         emit { cmd = Trap; loc = x.loc };
         let breaks = codegen_stmt (Some start) x.body registers in
@@ -394,7 +394,7 @@ let codegen (src : string) (fn_list : Ast.node list)
     | AliasStmt _ -> []
     | IfResumeStmt x -> (
         let coro = codegen_expr x.coroutine registers in
-        let reg = allocate_reg x.node_idx registers in
+        let reg = allocate_reg (IfResumeStmt x) registers in
         let resume_start = !ptr in
         emit { cmd = Trap; loc = x.loc };
         let if_ok_breaks = codegen_stmt this_loop_start x.if_ok registers in
@@ -437,10 +437,12 @@ let codegen (src : string) (fn_list : Ast.node list)
     let table_entry = Hashtbl.find function_table x in
     patch (Goto (Static !ptr)) table_entry;
 
-    let (registers : (int, Stack.location) Hashtbl.t) = Hashtbl.create 64 in
+    let (registers : (Ast.node, Stack.location) Hashtbl.t) =
+      Hashtbl.create 64
+    in
     List.iteri
       (fun i (arg : Ast.argument) ->
-        Hashtbl.add registers arg.node_idx (Argument i))
+        Hashtbl.add registers (Argument arg) (Argument i))
       args;
     let alloca = !ptr in
     emit { cmd = Trap; loc };

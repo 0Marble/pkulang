@@ -55,19 +55,6 @@
 %{
     open Ast
 
-    let global_index = ref 100
-    
-    let global_nodes_store = Hashtbl.create 64
-
-    let reset_parser_global_state () = 
-        global_index := 100;
-        Hashtbl.reset global_nodes_store;
-        ()
-
-    let next_idx () =
-      global_index := !global_index + 1;
-      !global_index - 1
-
     let to_op (tok:token) : Tokenizer.token = match tok with 
     | TokNumber (str,loc) -> {kind = TokNumber; str; loc;}
     | TokIdent (str,loc) -> {kind = TokIdent; str; loc;}
@@ -131,10 +118,7 @@
 
 root: 
     | stmts = list(top_stmt); fin = TokEnd { 
-    let table_copy = Hashtbl.copy global_nodes_store in
-    let n = ({stmts; all_nodes = table_copy; node_idx = next_idx (); loc = snd fin; }:root) in
-    Hashtbl.add n.all_nodes n.node_idx (Root n);
-    reset_parser_global_state ();
+    let n = ({stmts; loc = snd fin; }:root) in
     n }
 
 top_stmt:
@@ -146,8 +130,7 @@ top_stmt:
 
 fn_decl:
     | start=TokFn; name=TokIdent; TokLp; args=arglist(argument); TokRp; ret_type=typ; body=fn_body {
-    let n = {name=fst name; args; ret_type; body; node_idx = next_idx (); loc = snd start} in 
-    Hashtbl.add global_nodes_store n.node_idx (FnDecl n);
+    let (n:fn_decl) = {name=fst name; args; ret=ret_type; body; loc = snd start} in 
     n } 
 
 fn_body:
@@ -155,14 +138,12 @@ fn_body:
 
 argument:
     | name=TokIdent; TokColon; arg_type=typ {
-    let n = {name=fst name; arg_type; node_idx = next_idx (); loc=snd name; } in
-    Hashtbl.add global_nodes_store n.node_idx (Argument n);
+    let n = {name=fst name; typ=arg_type;  loc=snd name; } in
     n }
 
 struct_decl:
     | TokStruct; name=TokIdent; TokLb; decls=list(decl); TokRb { 
-    let n = {name=fst name; decls; node_idx = next_idx (); loc = snd name} in
-    Hashtbl.add global_nodes_store n.node_idx (StructDecl n);
+    let n = {name=fst name; decls;  loc = snd name} in
     n }
 
 decl:
@@ -178,32 +159,27 @@ field:
 
 field_with_val: 
     | var_name=TokIdent; TokColon; field_type=typ; TokAssign; value=expr; TokComa {
-    let n = {var_name=fst var_name; field_type; value = Some value; node_idx = next_idx (); loc = snd var_name } in 
-    Hashtbl.add global_nodes_store n.node_idx (Field n);
+    let n = {name=fst var_name; typ=field_type; value = Some value; loc = snd var_name } in 
     n }
 
 field_no_val: 
     | var_name=TokIdent; TokColon; field_type=typ; TokComa {
-    let n = {var_name=fst var_name; field_type; value=None; node_idx = next_idx (); loc = snd var_name } in
-    Hashtbl.add global_nodes_store n.node_idx (Field n);
+    let n = {name=fst var_name; typ=field_type; value=None; loc = snd var_name } in
     n }
 
 co_decl:
     | start=TokCo; name=TokIdent; TokLp; args=arglist(argument); TokRp; yield_type=typ; body=fn_body {
-    let n = {name=fst name; args; yield_type; body; node_idx = next_idx (); loc = snd start;  } in   
-    Hashtbl.add global_nodes_store n.node_idx (CoDecl n);
+    let n = {name=fst name; args; yield=yield_type; body; loc = snd start;  } in   
     n }
 
 let_stmt:
     | TokLet; var_name=TokIdent; TokColon; var_type=typ; TokAssign; value=expr; TokSemi {
-    let n = {var_name=fst var_name; var_type; value; node_idx = next_idx (); loc = snd var_name; } in 
-    Hashtbl.add global_nodes_store n.node_idx (LetStmt n);
+    let (n:let_stmt) = {name = fst var_name; typ = var_type; value; loc = snd var_name; } in 
     n }
 
 alias_stmt: 
     | TokType; type_name=TokIdent; TokAssign; other_type=typ; TokSemi {
-    let n = {type_name=fst type_name; other_type; node_idx = next_idx (); loc = snd type_name; } in
-    Hashtbl.add global_nodes_store n.node_idx (AliasStmt n);
+    let (n:alias_stmt) = {name=fst type_name; typ=other_type; loc = snd type_name; } in
     n }
    
 
@@ -220,40 +196,34 @@ parent_type:
 
 named_type:
     | name=TokIdent {
-    let n = ({name=fst name; node_idx = next_idx (); loc = snd name;}:named_type) in 
-    Hashtbl.add global_nodes_store n.node_idx (NamedType n);
+    let n = ({name=fst name; loc = snd name;}:named_type) in 
     n }
 
 array_type:
     | start=TokLs; elem=typ; TokRs {
-    let n = {elem; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (ArrayType n);
+    let n = {elem; loc = snd start;} in
     n }
 
 fn_type:
     | start=TokFn; TokLp; args=arglist(typ); TokRp; ret=typ {
-    let n = {args; ret; node_idx = next_idx (); loc = snd start;} in 
-    Hashtbl.add global_nodes_store n.node_idx (FnType n);
+    let n = {args; ret; loc = snd start;} in 
     n }
 
 
 co_type: 
     | start=TokCo; TokLp; args=arglist(typ); TokRp; yield=typ {
-    let n = {args; yield; node_idx = next_idx (); loc = snd start; } in
-    Hashtbl.add global_nodes_store n.node_idx (CoType n);
+    let n = {args; yield; loc = snd start; } in
     n }
 
 co_obj_type:
     | start=TokCo; yield=typ {
-    let n = {yield; node_idx = next_idx (); loc = snd start;  } in  
-    Hashtbl.add global_nodes_store n.node_idx (CoObjType n);
+    let n = {yield; loc = snd start;  } in  
     n }
 
 
 dot_type:
     | parent=parent_type; TokDot; child=TokIdent {
-    let n = {parent; child=fst child; node_idx = next_idx (); loc = snd child;} in
-    Hashtbl.add global_nodes_store n.node_idx (DotType n);
+    let n = {namespace=parent; name=fst child; loc = snd child;} in
     n }
 
 
@@ -279,34 +249,29 @@ stmt:
 
 block:
     | start=TokLb; stmts=list(stmt); TokRb {
-    let n = {stmts; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (Block n);
+    let n = {stmts; loc = snd start;} in
     n }
 
 
 for_loop:
     | TokFor; TokLp; iter_var=TokIdent; TokColon; iterator=expr; TokRp; body=body_stmt; {
-    let n = {iter_var=fst iter_var; iterator; body; node_idx = next_idx (); loc = snd iter_var;} in
-    Hashtbl.add global_nodes_store n.node_idx (ForLoop n);
+    let n = {var=fst iter_var; iterator; body; loc = snd iter_var;} in
     n }
 
 while_loop:
     | start = TokWhile; TokLp; condition=expr; TokRp; body=body_stmt; {
-    let n = {condition; body; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (WhileLoop n);
+    let n = {condition; body; loc = snd start;} in
     n }
 
 continue_stmt:
     | start=TokContinue; TokSemi; {
-    let n = ({node_idx = next_idx (); loc = snd start;}:continue_stmt) in   
-    Hashtbl.add global_nodes_store n.node_idx (ContinueStmt n);
+    let n = ({loc = snd start;}:continue_stmt) in   
     n }
 
 
 break_stmt:
     | start=TokBreak; TokSemi; {
-    let n = ({node_idx = next_idx (); loc = snd start;}:break_stmt) in
-    Hashtbl.add global_nodes_store n.node_idx (BreakStmt n);
+    let n = ({loc = snd start;}:break_stmt) in
     n }
 
 if_stmt:
@@ -315,20 +280,17 @@ if_stmt:
 
 if_stmt_no_else:
     | start=TokIf; TokLp; condition=expr; TokRp; if_true=body_stmt;  {
-    let n = {condition; if_true; if_false=None; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (IfStmt n);
+    let n = {condition; if_true; if_false=None; loc = snd start;} in
     n }
 
 if_stmt_with_else:
     | start=TokIf; TokLp; condition=expr; TokRp; if_true=body_stmt; TokElse; if_false=stmt; {
-    let n = {condition; if_true; if_false = Some if_false; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (IfStmt n);
+    let n = {condition; if_true; if_false = Some if_false; loc = snd start;} in
     n }
 
 if_resume_stmt:
     | if_resume_stmt_base TokElse stmt {
     let n = {$1 with if_bad= Some $3} in
-    Hashtbl.replace global_nodes_store n.node_idx (IfResumeStmt n);
     n }
     | if_resume_stmt_base {$1}
 
@@ -338,26 +300,22 @@ if_resume_stmt_base:
 
 if_resume_stmt_with_var:
     | start=TokIf; TokResume; TokLp; var=TokIdent; TokColon; coroutine=expr; TokRp; if_ok=body_stmt; {
-    let n = { var=Some (fst var); coroutine; if_ok; if_bad=None; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (IfResumeStmt n);
+    let n = { var=Some (fst var); coroutine; if_ok; if_bad=None; loc = snd start;} in
     n }
 
 if_resume_stmt_void:
     | start=TokIf; TokResume; TokLp; coroutine=expr; TokRp; if_ok=body_stmt; {
-    let n = { var=None; coroutine; if_ok; if_bad=None; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (IfResumeStmt n);
+    let n = { var=None; coroutine; if_ok; if_bad=None; loc = snd start;} in
     n }
 
 yield_stmt:
     | start=TokYield; value=option(expr); TokSemi; {
-    let n = ({value; node_idx = next_idx (); loc = snd start;}:yield_stmt) in
-    Hashtbl.add global_nodes_store n.node_idx (YieldStmt n);
+    let n = ({value; loc = snd start;}:yield_stmt) in
     n }
 
 return_stmt:
     | start=TokReturn; value = option(expr); TokSemi; {
-    let n = {value; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (ReturnStmt n);
+    let n = {value; loc = snd start;} in
     n }
 
 expr_stmt:
@@ -391,49 +349,41 @@ assign_op:
 
 expr:
     | lhs=expr; op=TokAssign; rhs=callable_expr {
-    let n = {lhs; rhs; op=to_op (TokAssign op); node_idx=next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (TokAssign op); loc = snd op; } in
     BinExpr n }
     | lhs=expr; op=assign_op; rhs=callable_expr {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd (snd op); } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
-    let n = {lhs; rhs=(BinExpr n); op=to_op (TokAssign (snd op)); node_idx=next_idx (); loc = snd (snd op); } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (fst op); loc = snd (snd op); } in
+    let n = {lhs; rhs=(BinExpr n); op=to_op (TokAssign (snd op)); loc = snd (snd op); } in
     BinExpr n }
     | expr0 {$1}
 
 expr0:
     | lhs=expr0; op=binop0; rhs=expr1; {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr1 {$1}
 
 expr1:
     | lhs=expr1; op=binop1; rhs=expr2; {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr2 {$1}
 
 expr2:
     | lhs=expr2; op=binop2; rhs=expr3; {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr3 {$1}
 
 expr3:
     | lhs=expr3; op=binop3; rhs=expr4; {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr4 {$1}
 
 expr4:
     | lhs=expr4; op=binop4; rhs=expr5; {
-    let n = {lhs; rhs; op=to_op (fst op); node_idx=next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (BinExpr n);
+    let n = {lhs; rhs; op=to_op (fst op); loc = snd op; } in
     BinExpr n }
     | expr5 {$1}
 
@@ -461,79 +411,66 @@ unop:
 
 unary_expr:
     | op=unop; sub_expr=expr5; {
-    let n = {op=to_op (fst op); sub_expr; node_idx = next_idx (); loc = snd op; } in
-    Hashtbl.add global_nodes_store n.node_idx (UnaryExpr n);
+    let n = {op=to_op (fst op); sub_expr; loc = snd op; } in
     n }
 
 call_expr:
-    | fn=callable_expr; loc=TokLp; params=arglist(expr); TokRp; {
-    let n = {fn; params; node_idx = next_idx (); loc = snd loc;} in
-    Hashtbl.add global_nodes_store n.node_idx (CallExpr n);
+    | fn=callable_expr; loc=TokLp; args=arglist(expr); TokRp; {
+    let n = {fn; args; loc = snd loc;} in
     n }
 
 index_expr:
-    | arr=callable_expr; loc=TokLs; idx=arglist(expr); TokRs; {
-    let n = {arr;idx; node_idx=next_idx (); loc=snd loc;} in
-    Hashtbl.add global_nodes_store n.node_idx (IndexExpr n);
+    | arr=callable_expr; loc=TokLs; ids=arglist(expr); TokRs; {
+    let n = {arr;ids; loc=snd loc;} in
     n }
 
 dot_expr:
     | obj=callable_expr; TokDot; field=TokIdent; {
-    let n = {obj;field=fst field; node_idx = next_idx (); loc = snd field; } in
-    Hashtbl.add global_nodes_store n.node_idx (DotExpr n);
+    let n = {obj;field=fst field; loc = snd field; } in
     n }
 
 var_expr:
     | name=TokIdent; {
-    let n = {name=fst name; node_idx = next_idx (); loc = snd name;} in
-    Hashtbl.add global_nodes_store n.node_idx (VarExpr n);
+    let n = {name=fst name; loc = snd name;} in
     n }
 
 num_expr:
     | num=TokNumber; {
-    let n = {num=int_of_string (fst num); node_idx = next_idx (); loc = snd num;} in
-    Hashtbl.add global_nodes_store n.node_idx (NumExpr n);
+    let n = {num=int_of_string (fst num); loc = snd num;} in
     n }
 
 string_expr:
     | str=TokString; {
-    let n = {str=fst str; node_idx = next_idx (); loc = snd str;} in
-    Hashtbl.add global_nodes_store n.node_idx (StringExpr n);
+    let n = {str=fst str; loc = snd str;} in
     n }
 
 array_literal:
     | start=TokLs; elems=arglist(expr); TokRs; {
-    let n = {elems; node_idx=next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (ArrayLiteral n);
+    let n = {elems; loc = snd start;} in
     n }
 
 null_literal:
     | null=TokNull; {
-    let n = ({node_idx=next_idx(); loc = snd null;}:null_literal) in
-    Hashtbl.add global_nodes_store n.node_idx (NullLiteral n);
+    let n = ({loc = snd null;}:null_literal) in
     n }
 
 new_expr:
     | start=TokNew; typ=typ; TokLb; fields=arglist(field_literal); TokRb; {
-    let n = {typ; fields; node_idx = next_idx (); loc = snd start;} in
-    Hashtbl.add global_nodes_store n.node_idx (NewExpr n);
+    let n = {typ; fields; loc = snd start;} in
     n }
     
 
 field_literal:
     | name=TokIdent; TokColon; value=expr; {
-    let n = ({name=fst name; value; node_idx = next_idx (); loc = snd name;}:field_literal) in
-    Hashtbl.add global_nodes_store n.node_idx (FieldLiteral n);
+    let n = ({name=fst name; value; loc = snd name;}:field_literal) in
     n }
 
 resume_expr:
     | start=TokResume; TokLp; coroutine=expr; TokRp; {
-    let n = ({coroutine; node_idx=next_idx (); loc = snd start; }:resume_expr) in
-    Hashtbl.add global_nodes_store n.node_idx (ResumeExpr n);
+    let n = ({coroutine; loc = snd start; }:resume_expr) in
     n }
 
 create_expr:
     | start=TokCreate; TokLp; args=arglist(expr); TokRp; {
-    let n = {coroutine=List.hd args; params=List.tl args; node_idx = next_idx (); loc = snd start; } in
-    Hashtbl.add global_nodes_store n.node_idx (CreateExpr n);
+    let n = {coroutine=List.hd args; args=List.tl args; loc = snd start; } in
     n }

@@ -1,40 +1,34 @@
 open Alcotest
 open Pkulang
 
-let scan_root src (root : Ast.root) =
-  let fn_list = ref [] in
-  let map =
-    Hashtbl.fold
-      (fun _ (v : Ast.node) acc ->
-        let name =
-          match v with
-          | FnDecl x ->
-              fn_list := v :: !fn_list;
-              Some x.name
-          | CoDecl x ->
-              fn_list := v :: !fn_list;
-              Some x.name
-          | LetStmt x -> Some x.var_name
-          | StructDecl x -> Some x.name
-          | Argument x -> Some x.name
-          | Field x -> Some x.var_name
-          | ForLoop x -> Some x.iter_var
-          | IfResumeStmt x -> x.var
-          | _ -> None
-        in
-        (match name with
-        | Some name -> (
-            match Hashtbl.find_opt acc name with
-            | Some _ ->
-                Error.fail_at_spot
-                  "Error: we only support unique names for testing" src
-                  (Ast.node_loc v) (Error.Error Unknown)
-            | None -> Hashtbl.add acc name v)
-        | None -> ());
-        acc)
-      root.all_nodes (Hashtbl.create 64)
+let scan_root (root : Ast.root) =
+  let node_name (n : Ast.node) =
+    let name =
+      match n with
+      | FnDecl x -> Some x.name
+      | CoDecl x -> Some x.name
+      | LetStmt x -> Some x.name
+      | StructDecl x -> Some x.name
+      | Argument x -> Some x.name
+      | Field x -> Some x.name
+      | ForLoop x -> Some x.var
+      | IfResumeStmt x -> x.var
+      | _ -> None
+    in
+    Option.map (fun name -> (name, n)) name
   in
-  (map, !fn_list)
+  let fn_list =
+    Ast.visit_all_nodes
+      (fun n -> match n with FnDecl _ | CoDecl _ -> Some n | _ -> None)
+      root
+    |> List.filter_map (fun x -> x)
+  in
+  let map =
+    Ast.visit_all_nodes node_name root
+    |> List.filter_map (fun x -> x)
+    |> List.to_seq |> Hashtbl.of_seq
+  in
+  (map, fn_list)
 
 let dummy_get_definition map (node : Ast.node) :
     [ `Node of Ast.node | `Builtin of string ] =
@@ -50,7 +44,7 @@ let dummy_get_definition map (node : Ast.node) :
 
 let compile_and_run ?(stdin : string option = None) src n =
   let root = Parser.parse_root src in
-  let map, fns = scan_root src root in
+  let map, fns = scan_root root in
   let stdout = ref "" in
   let stdin = Option.map (String.split_on_char '\n') stdin |> ref in
   let r =
