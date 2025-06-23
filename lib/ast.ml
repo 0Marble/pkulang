@@ -672,6 +672,47 @@ let node_children n =
   | ReturnStmt x -> x.value |> Option.map expr_to_node |> Option.to_list
   | FieldLiteral x -> [ expr_to_node x.value ]
 
+let set_parent p n =
+  match n with
+  | Invalid -> failwith "unreachable"
+  | Root _ -> failwith "no parent on root"
+  | FnDecl x -> x.parent := p
+  | StructDecl x -> x.parent := p
+  | CoDecl x -> x.parent := p
+  | LetStmt x -> x.parent := p
+  | AliasStmt x -> x.parent := p
+  | Argument x -> x.parent := p
+  | NamedType x -> x.parent := p
+  | ArrayType x -> x.parent := p
+  | DotType x -> x.parent := p
+  | FnType x -> x.parent := p
+  | CoType x -> x.parent := p
+  | CoObjType x -> x.parent := p
+  | Block x -> x.parent := p
+  | Field x -> x.parent := p
+  | BinExpr x -> x.parent := p
+  | UnaryExpr x -> x.parent := p
+  | CallExpr x -> x.parent := p
+  | IndexExpr x -> x.parent := p
+  | DotExpr x -> x.parent := p
+  | VarExpr x -> x.parent := p
+  | NumExpr x -> x.parent := p
+  | StringExpr x -> x.parent := p
+  | ArrayLiteral x -> x.parent := p
+  | NullLiteral x -> x.parent := p
+  | NewExpr x -> x.parent := p
+  | YieldStmt x -> x.parent := p
+  | CreateExpr x -> x.parent := p
+  | ResumeExpr x -> x.parent := p
+  | ForLoop x -> x.parent := p
+  | WhileLoop x -> x.parent := p
+  | ContinueStmt x -> x.parent := p
+  | BreakStmt x -> x.parent := p
+  | IfStmt x -> x.parent := p
+  | IfResumeStmt x -> x.parent := p
+  | ReturnStmt x -> x.parent := p
+  | FieldLiteral x -> x.parent := p
+
 let visit_all_nodes (map : node -> 't) (root : root) : 't list =
   let rec visit_node n =
     map n :: (node_children n |> List.map visit_node |> List.concat)

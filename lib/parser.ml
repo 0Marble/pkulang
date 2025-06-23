@@ -75,12 +75,20 @@ let parse_root src =
   in
 
   try
-    Lalr.root
-      (fun (lex : Lexing.lexbuf) ->
-        lex.lex_curr_pos <- !idx;
-        idx := !idx + 1;
-        convert_token tokens.(!idx - 1))
-      dummy_lexbuf
+    let root =
+      Lalr.root
+        (fun (lex : Lexing.lexbuf) ->
+          lex.lex_curr_pos <- !idx;
+          idx := !idx + 1;
+          convert_token tokens.(!idx - 1))
+        dummy_lexbuf
+    in
+    let _ =
+      Ast.visit_all_nodes
+        (fun n -> List.iter (Ast.set_parent n) (Ast.node_children n))
+        root
+    in
+    root
   with e -> Error.fail_at_spot "Parser error" src tokens.(!idx - 1).loc e
 
 let parse_stmt src =
