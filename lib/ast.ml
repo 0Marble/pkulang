@@ -672,6 +672,47 @@ let node_children n =
   | ReturnStmt x -> x.value |> Option.map expr_to_node |> Option.to_list
   | FieldLiteral x -> [ expr_to_node x.value ]
 
+let get_parent n =
+  match n with
+  | Invalid -> failwith "unreachable"
+  | Root _ -> None
+  | FnDecl x -> Some !(x.parent)
+  | StructDecl x -> Some !(x.parent)
+  | CoDecl x -> Some !(x.parent)
+  | LetStmt x -> Some !(x.parent)
+  | AliasStmt x -> Some !(x.parent)
+  | Argument x -> Some !(x.parent)
+  | NamedType x -> Some !(x.parent)
+  | ArrayType x -> Some !(x.parent)
+  | DotType x -> Some !(x.parent)
+  | FnType x -> Some !(x.parent)
+  | CoType x -> Some !(x.parent)
+  | CoObjType x -> Some !(x.parent)
+  | Block x -> Some !(x.parent)
+  | Field x -> Some !(x.parent)
+  | BinExpr x -> Some !(x.parent)
+  | UnaryExpr x -> Some !(x.parent)
+  | CallExpr x -> Some !(x.parent)
+  | IndexExpr x -> Some !(x.parent)
+  | DotExpr x -> Some !(x.parent)
+  | VarExpr x -> Some !(x.parent)
+  | NumExpr x -> Some !(x.parent)
+  | StringExpr x -> Some !(x.parent)
+  | ArrayLiteral x -> Some !(x.parent)
+  | NullLiteral x -> Some !(x.parent)
+  | NewExpr x -> Some !(x.parent)
+  | YieldStmt x -> Some !(x.parent)
+  | CreateExpr x -> Some !(x.parent)
+  | ResumeExpr x -> Some !(x.parent)
+  | ForLoop x -> Some !(x.parent)
+  | WhileLoop x -> Some !(x.parent)
+  | ContinueStmt x -> Some !(x.parent)
+  | BreakStmt x -> Some !(x.parent)
+  | IfStmt x -> Some !(x.parent)
+  | IfResumeStmt x -> Some !(x.parent)
+  | ReturnStmt x -> Some !(x.parent)
+  | FieldLiteral x -> Some !(x.parent)
+
 let set_parent p n =
   match n with
   | Invalid -> failwith "unreachable"
