@@ -1,7 +1,7 @@
 type array_type = { elem : typ }
 and struct_type = { node : Ast.struct_decl; decls : decl list }
 and decl = { name : string; typ : typ; kind : decl_kind }
-and decl_kind = Field | Method | LetStmt
+and decl_kind = Field | Method | LetStmt | InnerStruct
 and fn_type = { args : typ list; ret : typ }
 and co_type = { args : typ list; yield : typ }
 and co_obj_type = { yield : typ }
@@ -64,7 +64,6 @@ let rec get_definition (node : Ast.node) : definition =
     | Field x -> Some x.name
     | ForLoop x -> Some x.var
     | IfResumeStmt x -> x.var
-    | FieldLiteral _ -> failwith "Todo: FieldLiteral"
     | _ -> None
   in
   let find_node_with_name name =
@@ -115,7 +114,6 @@ let rec get_definition (node : Ast.node) : definition =
           | Some y -> Node y
           | None -> failwith "Error: no such declaration")
       | _ -> failwith "Error: parent is not an object")
-  | FieldLiteral _ -> failwith "Todo"
   | YieldStmt _ | WhileLoop _ | ContinueStmt _ | BreakStmt _ | IfStmt _
   | ReturnStmt _ | Invalid | Root _ | Block _ ->
       failwith
@@ -150,7 +148,7 @@ and get_type (node : Ast.node) : typ =
             | FnDecl x -> { name = x.name; typ; kind = Method }
             | CoDecl x -> { name = x.name; typ; kind = Method }
             | LetStmt x -> { name = x.name; typ; kind = LetStmt }
-            | StructDecl _ -> failwith "Todo: inner structs"
+            | StructDecl x -> { name = x.name; typ; kind = InnerStruct }
             | Field x -> { name = x.name; typ; kind = Field })
           x.decls
       in
@@ -239,14 +237,13 @@ and get_type (node : Ast.node) : typ =
       match ns with
       | StructType s -> (
           match List.find_opt (fun (y : decl) -> y.name = x.name) s.decls with
-          | Some y -> y.typ
-          | None -> failwith "Error: no such field")
+          | Some y when y.kind = InnerStruct -> y.typ
+          | _ -> failwith "Error: no such inner type")
       | _ -> failwith "Error: not an object")
   | NamedType _ | VarExpr _ -> (
       match get_definition node with
       | Node n -> get_type n
       | Builtin b -> Hashtbl.find builtins b)
-  | FieldLiteral _ -> failwith "Todo: field literal"
   | n ->
       failwith
         (Printf.sprintf "unreachable: no type associated with `%s'"
