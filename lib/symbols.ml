@@ -1,5 +1,5 @@
 type array_type = { elem : typ }
-and struct_type = { node : Ast.struct_decl; decls : decl list }
+and struct_type = { name : string; decls : decl list }
 and decl = { name : string; typ : typ; kind : decl_kind }
 and decl_kind = Field | Method | LetStmt | InnerStruct
 and fn_type = { args : typ list; ret : typ }
@@ -94,22 +94,22 @@ let rec get_definition (node : Ast.node) : definition =
           | Some n -> Node n
           | None -> failwith "Error: undefined symbol"))
   | DotType x -> (
-      let parent = get_type (Ast.type_to_node x.namespace) in
+      let parent = get_definition (Ast.type_to_node x.namespace) in
       match parent with
-      | StructType s -> (
+      | Node (StructDecl s) -> (
           match
-            Ast.node_children (StructDecl s.node) |> find_node_with_name x.name
+            s.decls |> List.map Ast.decl_to_node |> find_node_with_name x.name
           with
           | Some (StructDecl d) -> Node (StructDecl d)
           | Some _ -> failwith "Error: child is not a type"
           | None -> failwith "Error: child type not found")
       | _ -> failwith "Error: Invalid parent, expected a struct type")
   | DotExpr x -> (
-      let obj = get_type (Ast.expr_to_node x.obj) in
+      let obj = get_definition (Ast.expr_to_node x.obj) in
       match obj with
-      | StructType s -> (
+      | Node (StructDecl s) -> (
           match
-            Ast.node_children (StructDecl s.node) |> find_node_with_name x.field
+            s.decls |> List.map Ast.decl_to_node |> find_node_with_name x.field
           with
           | Some y -> Node y
           | None -> failwith "Error: no such declaration")
@@ -152,7 +152,7 @@ and get_type (node : Ast.node) : typ =
             | Field x -> { name = x.name; typ; kind = Field })
           x.decls
       in
-      StructType { node = x; decls }
+      StructType { name = x.name; decls }
   | LetStmt x -> get_type (Ast.type_to_node x.typ)
   | AliasStmt x -> get_type (Ast.type_to_node x.typ)
   | Argument x -> get_type (Ast.type_to_node x.typ)
