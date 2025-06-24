@@ -43,6 +43,26 @@ let typecheck (ss : Symbols.symbol_store) (root : Ast.root) =
               args
           | _ -> failwith "Error: not a callable value"
         in
+        let expected_len = List.length expected in
+        let given_len = List.length args in
+        let args =
+          if expected_len = given_len then Some args
+          else if expected_len = given_len + 1 then
+            match x.fn with
+            | DotExpr y -> (
+                match Symbols.get_definition ss (Ast.expr_to_node y.obj) with
+                | Node (StructDecl _) -> None
+                | Node _ ->
+                    Some (Symbols.get_type ss (Ast.expr_to_node y.obj) :: args)
+                | _ -> None)
+            | _ -> None
+          else None
+        in
+        let args =
+          match args with
+          | Some a -> a
+          | None -> failwith "Error: argument count mismatch"
+        in
         List.combine expected args
         |> List.iteri (fun i (a, b) ->
                if Symbols.compatible_types a b then ()
