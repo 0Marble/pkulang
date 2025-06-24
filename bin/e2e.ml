@@ -53,6 +53,7 @@ let compile_and_run src stdin : string =
   let stdin = String.split_on_char '\n' stdin |> ref in
   let root = Parser.parse_root src in
   let ss = Symbols.create src in
+  Typecheck.typecheck ss root;
   let r =
     Codegen.codegen src
       (Ast.visit_all_nodes

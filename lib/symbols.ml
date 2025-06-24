@@ -347,3 +347,13 @@ let rec typ_eql a b =
   | CoObjType a, CoObjType b -> typ_eql a.yield b.yield
   | BuiltinFn a, BuiltinFn b -> a == b
   | _ -> false
+
+let compatible_types expected given =
+  match (expected, given) with
+  | IntType, NullType -> false
+  | _, NullType -> true
+  | ArrayType _, EmptyArrayType -> true
+  | a, b -> typ_eql a b
+
+let can_be_coro typ =
+  match typ with CoObjType _ -> true | NullType -> true | _ -> false

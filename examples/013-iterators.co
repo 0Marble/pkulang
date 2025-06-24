@@ -12,15 +12,15 @@ fn array_iter(arr: [int]) co int {
 }
 
 % map_fn and coro are function pointers
-fn map(map_fn: fn (int) int, coro: co () int) co int {
-	co map(map_fn: fn (int) int, coro: co () int) int {
+fn map(map_fn: fn (int) int, coro: co int) co int {
+	co map(map_fn: fn (int) int, coro: co int) int {
 		for (x: coro) yield map_fn(x);
 	}
 	return create(map, map_fn, coro);
 }
 
-fn filter(pred: fn (int) int, coro: co () int) co int {
-	co filter(pred: fn (int) int, coro: co () int) int {
+fn filter(pred: fn (int) int, coro: co int) co int {
+	co filter(pred: fn (int) int, coro: co int) int {
 		for (x: coro) {
 			if (pred(x)) yield x;
 		}

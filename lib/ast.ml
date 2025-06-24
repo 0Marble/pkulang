@@ -659,20 +659,30 @@ let node_children n =
   | Invalid -> failwith "unreachable"
   | Root x -> List.map (fun y -> top_stmt_to_stmt y |> stmt_to_node) x.stmts
   | FnDecl x ->
-      type_to_node x.ret :: stmt_to_node x.body
-      :: List.map (fun y -> Argument y) x.args
+      List.concat
+        [
+          [ type_to_node x.ret ];
+          List.map (fun y -> Argument y) x.args;
+          [ stmt_to_node x.body ];
+        ]
   | StructDecl x -> List.map decl_to_node x.decls
   | CoDecl x ->
-      type_to_node x.yield :: stmt_to_node x.body
-      :: List.map (fun y -> Argument y) x.args
-  | LetStmt x -> [ expr_to_node x.value; type_to_node x.typ ]
+      List.concat
+        [
+          [ type_to_node x.yield ];
+          List.map (fun y -> Argument y) x.args;
+          [ stmt_to_node x.body ];
+        ]
+  | LetStmt x -> [ type_to_node x.typ; expr_to_node x.value ]
   | AliasStmt x -> [ type_to_node x.typ ]
   | Argument x -> [ type_to_node x.typ ]
   | NamedType _ -> []
   | ArrayType x -> [ type_to_node x.elem ]
   | DotType x -> [ type_to_node x.namespace ]
-  | FnType x -> type_to_node x.ret :: List.map type_to_node x.args
-  | CoType x -> type_to_node x.yield :: List.map type_to_node x.args
+  | FnType x ->
+      List.concat [ List.map type_to_node x.args; [ type_to_node x.ret ] ]
+  | CoType x ->
+      List.concat [ List.map type_to_node x.args; [ type_to_node x.yield ] ]
   | CoObjType x -> [ type_to_node x.yield ]
   | Block x -> List.map stmt_to_node x.stmts
   | Field x -> [ type_to_node x.typ ]
@@ -923,3 +933,14 @@ let get_node_kind node =
 
 let find_child_of_kind kind start =
   find_child (fun c -> get_node_kind c = kind) start
+
+let rec is_before a b =
+  if List.find_opt (node_eql b) (node_children a) |> Option.is_some then true
+  else
+    match (node_parent a, node_parent b) with
+    | Some ap, Some ab when node_eql ap ab ->
+        let ai = List.find_index (node_eql a) (node_children ap) in
+        let bi = List.find_index (node_eql b) (node_children ap) in
+        ai < bi
+    | _, Some b -> is_before a b
+    | _ -> false

@@ -2,7 +2,7 @@
 fn range(a: int, b: int) co int {
 	% we can declare local functions
 	% note: not a closure, doesn't capture any vars
-	fn range(a: int, b: int) int {
+	co range(a: int, b: int) int {
 		while(a < b) {
 			yield a;
 			a += 1;
