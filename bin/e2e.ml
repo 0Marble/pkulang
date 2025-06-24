@@ -12,7 +12,7 @@ let parse_test file_path =
       CharMap.of_list [ ('n', '\n'); ('t', '\t'); ('\\', '\\'); ('"', '"') ]
     in
     let unescape s =
-      let s = List.fold_left ( ^ ) "" s |> String.trim in
+      let s = String.concat ":" s |> String.trim in
       assert (String.starts_with ~prefix:"\"" s);
       assert (String.ends_with ~suffix:"\"" s);
       let len = String.length s in
@@ -52,11 +52,17 @@ let compile_and_run src stdin : string =
   let stdout = ref "" in
   let stdin = String.split_on_char '\n' stdin |> ref in
   let root = Parser.parse_root src in
-  let _ = failwith "Todo: implement symbol table" in
-  let _ = failwith "Todo: implement type checking" in
+  let ss = Symbols.create src in
   let r =
-    Codegen.codegen src (failwith "Todo: fn list")
-      (failwith "Todo: get_definiton")
+    Codegen.codegen src
+      (Ast.visit_all_nodes
+         (fun x -> match x with FnDecl _ | CoDecl _ -> Some x | _ -> None)
+         root
+      |> List.filter_map (fun x -> x))
+      (fun n : [ `Node of Ast.node | `Builtin of string ] ->
+        match Symbols.get_definition ss n with
+        | Node x -> `Node x
+        | Builtin x -> `Builtin x)
       root
       (fun () ->
         match !stdin with
@@ -84,9 +90,6 @@ let () =
     tests
     |> List.filter_map (fun (file, source, expected, stdin) : string option ->
            try
-             Printf.eprintf "stdin: \"%s\"\n" (String.escaped stdin);
-             Printf.eprintf "stdout: \"%s\"\n" (String.escaped expected);
-
              let stdout = compile_and_run source stdin in
 
              if stdout <> expected then (

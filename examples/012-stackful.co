@@ -1,3 +1,5 @@
+% stdout: "10\n20\n30\n40\n"
+
 struct Tree {
 	val: int,
 	left: Tree = null,

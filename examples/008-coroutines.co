@@ -1,4 +1,4 @@
-% stdout: "created\nstart\n0\n1\n2\n3\n4\n5\ndone\n"
+% stdout: "created\nstarted\n0\n1\n2\n3\n4\ndone\n"
 
 co range(a: int, b: int) int {
 	println("started");

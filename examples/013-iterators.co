@@ -1,10 +1,10 @@
-% stdout: "0\n-2\n0-4\n-6\n-8\n"
+% stdout: "0\n-2\n-4\n-6\n-8\n"
 
 fn array_iter(arr: [int]) co int {
 	co iter(arr: [int]) int {
 		let i: int = 0;
 		while(i < len(arr)) {
-			yield a[i];
+			yield arr[i];
 			i += 1;
 		}
 	}
@@ -14,17 +14,18 @@ fn array_iter(arr: [int]) co int {
 % map_fn and coro are function pointers
 fn map(map_fn: fn (int) int, coro: co () int) co int {
 	co map(map_fn: fn (int) int, coro: co () int) int {
-		if resume (x: coro) yield map_fn(x);
+		for (x: coro) yield map_fn(x);
 	}
 	return create(map, map_fn, coro);
 }
 
 fn filter(pred: fn (int) int, coro: co () int) co int {
 	co filter(pred: fn (int) int, coro: co () int) int {
-		if resume (x: coro) {
+		for (x: coro) {
 			if (pred(x)) yield x;
 		}
 	}
+	return create(filter, pred, coro);
 }
 
 fn main() void {

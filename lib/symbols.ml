@@ -3,7 +3,7 @@ and struct_type = Ast.struct_decl
 and fn_type = { args : typ list; ret : typ }
 and co_type = { args : typ list; yield : typ }
 and co_obj_type = { yield : typ }
-and builtin_fn = { name : string; typecheck : typ list -> typ }
+and builtin_fn = { name : string; typecheck : symbol_store -> typ list -> typ }
 
 and typ =
   | IntType
@@ -17,6 +17,14 @@ and typ =
   | CoType of co_type
   | CoObjType of co_obj_type
   | BuiltinFn of builtin_fn
+
+and symbol_store = {
+  defs : (Ast.node, definition) Hashtbl.t;
+  types : (Ast.node, typ) Hashtbl.t;
+  src : string;
+}
+
+and definition = Node of Ast.node | Builtin of string
 
 let rec string_of_type t =
   match t with
@@ -38,8 +46,6 @@ let rec string_of_type t =
   | CoObjType x -> Printf.sprintf "(co_obj %s)" (string_of_type x.yield)
   | BuiltinFn x -> Printf.sprintf "(builtin %s)" x.name
 
-type definition = Node of Ast.node | Builtin of string
-
 let string_of_definition d =
   match d with
   | Node n -> Printf.sprintf "(node %s)" (Ast.node_to_str n)
@@ -56,7 +62,7 @@ Hashtbl.add builtins "len"
      {
        name = "len";
        typecheck =
-         (fun args ->
+         (fun _ args ->
            match args with
            | [ ArrayType _ ] -> IntType
            | [ EmptyArrayType ] -> IntType
@@ -65,11 +71,37 @@ Hashtbl.add builtins "len"
 ;;
 
 Hashtbl.add builtins "print"
-  (BuiltinFn { name = "print"; typecheck = (fun _ -> VoidType) })
+  (BuiltinFn { name = "print"; typecheck = (fun _ _ -> VoidType) })
 ;;
 
 Hashtbl.add builtins "println"
-  (BuiltinFn { name = "println"; typecheck = (fun _ -> VoidType) })
+  (BuiltinFn { name = "println"; typecheck = (fun _ _ -> VoidType) })
+;;
+
+Hashtbl.add builtins "read_line"
+  (BuiltinFn
+     {
+       name = "read_line";
+       typecheck =
+         (fun _ args ->
+           if List.length args <> 0 then
+             failwith "Error: read_line() does not take arguments"
+           else StringType);
+     })
+;;
+
+Hashtbl.add builtins "push"
+  (BuiltinFn
+     {
+       name = "push";
+       typecheck =
+         (fun _ args ->
+           match args with
+           | [ ArrayType arr; elem ] when arr.elem = elem -> VoidType
+           | _ ->
+               failwith
+                 "Error: push() takes an array of type [T] and elem of type T");
+     })
 ;;
 
 ()
@@ -98,12 +130,6 @@ let rec find_name_in_parents name node =
   | None ->
       Option.map (find_name_in_parents name) (Ast.node_parent node)
       |> Option.join
-
-type symbol_store = {
-  defs : (Ast.node, definition) Hashtbl.t;
-  types : (Ast.node, typ) Hashtbl.t;
-  src : string;
-}
 
 let create src : symbol_store =
   { defs = Hashtbl.create 64; types = Hashtbl.create 64; src }
@@ -220,7 +246,7 @@ and get_type (ss : symbol_store) (node : Ast.node) : typ =
             | FnType fn -> fn.ret
             | CoType co -> co.yield
             | BuiltinFn fn ->
-                fn.typecheck
+                fn.typecheck ss
                   (List.map (fun a -> Ast.expr_to_node a |> get_type) x.args)
             | _ -> failwith "Error: not a callable type")
         | IndexExpr x -> (
@@ -285,7 +311,13 @@ and get_type (ss : symbol_store) (node : Ast.node) : typ =
         | NamedType _ | VarExpr _ -> (
             match get_definition node with
             | Node n -> get_type n
-            | Builtin b -> Hashtbl.find builtins b)
+            | Builtin b -> (
+                match Hashtbl.find_opt builtins b with
+                | Some b -> b
+                | None ->
+                    failwith
+                      (Printf.sprintf
+                         "unreachable: somehow got an invalid builtin `%s'" b)))
         | n ->
             failwith
               (Printf.sprintf "unreachable: no type associated with `%s'"

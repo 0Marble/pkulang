@@ -38,6 +38,15 @@ let codegen (src : string) (fn_list : Ast.node list)
       Builtin ([| Location (Register 0) |], "read_line");
       Ret (Location (Register 0));
     ];
+  create_builtin "push"
+    [
+      Alloca 2;
+      Size (Register 0, Location (Argument 0));
+      Add (Register 1, Location (Register 0), Number 1);
+      Resize (Argument 0, Location (Register 1));
+      IndexSet (Argument 0, Location (Register 0), Location (Argument 1));
+      Ret Null;
+    ];
 
   let (globals_table : (Ast.node, Stack.location) Hashtbl.t) =
     Hashtbl.create 64
