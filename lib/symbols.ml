@@ -99,168 +99,199 @@ let rec find_name_in_parents name node =
       Option.map (find_name_in_parents name) (Ast.node_parent node)
       |> Option.join
 
-let rec get_definition (node : Ast.node) : definition =
-  match node with
-  | NamedType x -> (
-      match Hashtbl.find_opt builtins x.name with
-      | Some _ -> Builtin x.name
-      | None -> (
-          match find_name_in_parents x.name (NamedType x) with
-          | Some n -> Node n
-          | None -> failwith "Error: undefined symbol"))
-  | VarExpr x -> (
-      match Hashtbl.find_opt builtins x.name with
-      | Some _ -> Builtin x.name
-      | None -> (
-          match find_name_in_parents x.name (VarExpr x) with
-          | Some n -> Node n
-          | None -> failwith "Error: undefined symbol"))
-  | DotType x -> (
-      let parent = get_definition (Ast.type_to_node x.namespace) in
-      match parent with
-      | Node (StructDecl s) -> (
-          match
-            s.decls |> List.map Ast.decl_to_node |> find_node_with_name x.name
-          with
-          | Some (StructDecl d) -> Node (StructDecl d)
-          | Some _ -> failwith "Error: child is not a type"
-          | None -> failwith "Error: child type not found")
-      | _ -> failwith "Error: Invalid parent, expected a struct type")
-  | DotExpr x -> (
-      let obj = get_type (Ast.expr_to_node x.obj) in
-      match obj with
-      | StructType s -> (
-          match
-            s.decls |> List.map Ast.decl_to_node |> find_node_with_name x.field
-          with
-          | Some y -> Node y
-          | None -> failwith "Error: no such declaration")
-      | _ -> failwith "Error: parent is not an object")
-  | YieldStmt _ | WhileLoop _ | ContinueStmt _ | BreakStmt _ | IfStmt _
-  | ReturnStmt _ | Invalid | Root _ | Block _ ->
-      failwith
-        (Printf.sprintf "unreachable: no definition associated with `%s'"
-           (Ast.node_to_str node))
-  | _ -> Node node
+type symbol_store = {
+  defs : (Ast.node, definition) Hashtbl.t;
+  types : (Ast.node, typ) Hashtbl.t;
+  src : string;
+}
 
-and get_type (node : Ast.node) : typ =
-  match node with
-  | FnDecl x ->
-      let ret = get_type (Ast.type_to_node x.ret) in
-      let args =
-        x.args
-        |> List.map (fun (x : Ast.argument) ->
-               x.typ |> Ast.type_to_node |> get_type)
-      in
-      FnType { ret; args }
-  | CoDecl x ->
-      let yield = get_type (Ast.type_to_node x.yield) in
-      let args =
-        x.args
-        |> List.map (fun (x : Ast.argument) ->
-               x.typ |> Ast.type_to_node |> get_type)
-      in
-      CoType { yield; args }
-  | StructDecl x -> StructType x
-  | LetStmt x -> get_type (Ast.type_to_node x.typ)
-  | AliasStmt x -> get_type (Ast.type_to_node x.typ)
-  | Argument x -> get_type (Ast.type_to_node x.typ)
-  | ArrayType x ->
-      let elem = get_type (Ast.type_to_node x.elem) in
-      ArrayType { elem }
-  | FnType x ->
-      let ret = get_type (Ast.type_to_node x.ret) in
-      let args = List.map Ast.type_to_node x.args |> List.map get_type in
-      FnType { ret; args }
-  | CoType x ->
-      let yield = get_type (Ast.type_to_node x.yield) in
-      let args = List.map Ast.type_to_node x.args |> List.map get_type in
-      CoType { yield; args }
-  | CoObjType x ->
-      let yield = get_type (Ast.type_to_node x.yield) in
-      CoObjType { yield }
-  | Field x -> get_type (Ast.type_to_node x.typ)
-  | BinExpr x ->
-      let lhs = get_type (Ast.expr_to_node x.lhs) in
-      let rhs = get_type (Ast.expr_to_node x.rhs) in
-      if lhs = rhs then lhs else failwith "Error: adding different types"
-  | UnaryExpr x -> (
-      let sub = get_type (Ast.expr_to_node x.sub_expr) in
-      match sub with
-      | IntType -> IntType
-      | _ -> failwith "Error: expected an int")
-  | CallExpr x -> (
-      let fn = get_type (Ast.expr_to_node x.fn) in
-      match fn with
-      | FnType fn -> fn.ret
-      | CoType co -> co.yield
-      | BuiltinFn fn ->
-          fn.typecheck
-            (List.map (fun a -> Ast.expr_to_node a |> get_type) x.args)
-      | _ -> failwith "Error: not a callable type")
-  | IndexExpr x -> (
-      let arr = get_type (Ast.expr_to_node x.arr) in
-      match arr with
-      | ArrayType arr -> arr.elem
-      | _ -> failwith "Error: not an array type")
-  | DotExpr x -> (
-      let obj = get_type (Ast.expr_to_node x.obj) in
-      match obj with
-      | StructType s -> (
-          match
-            s.decls |> List.map Ast.decl_to_node |> find_node_with_name x.field
-          with
-          | Some y -> get_type y
-          | None -> failwith "Error: no such field")
-      | _ -> failwith "Error: not an object")
-  | NumExpr _ -> IntType
-  | StringExpr _ -> StringType
-  | ArrayLiteral x -> (
-      match x.elems with
-      | y :: _ ->
-          let elem = get_type (Ast.expr_to_node y) in
-          ArrayType { elem }
-      | _ -> EmptyArrayType)
-  | NullLiteral _ -> NullType
-  | NewExpr x -> get_type (Ast.type_to_node x.typ)
-  | CreateExpr x -> (
-      let coro = get_type (Ast.expr_to_node x.coroutine) in
-      match coro with
-      | CoType coro -> CoObjType { yield = coro.yield }
-      | _ -> failwith "Error: creates takes a co fn as a first parameter")
-  | ResumeExpr x -> (
-      let coro = get_type (Ast.expr_to_node x.coroutine) in
-      match coro with
-      | CoObjType coro -> coro.yield
-      | _ -> failwith "Error: resume takes a coroutine")
-  | ForLoop x -> (
-      let coro = get_type (Ast.expr_to_node x.iterator) in
-      match coro with
-      | CoObjType coro -> coro.yield
-      | _ -> failwith "Error: for loop takes a coroutine object as an iterator")
-  | IfResumeStmt x -> (
-      let coro = get_type (Ast.expr_to_node x.coroutine) in
-      match coro with
-      | CoObjType coro -> coro.yield
-      | _ -> failwith "Error: if resume should take a coroutine object")
-  | DotType x -> (
-      let ns = get_type (Ast.type_to_node x.namespace) in
-      match ns with
-      | StructType s -> (
-          match
-            s.decls |> List.map Ast.decl_to_node |> find_node_with_name x.name
-          with
-          | Some (StructDecl y) -> StructType y
-          | _ -> failwith "Error: no such inner type")
-      | _ -> failwith "Error: not an object")
-  | NamedType _ | VarExpr _ -> (
-      match get_definition node with
-      | Node n -> get_type n
-      | Builtin b -> Hashtbl.find builtins b)
-  | n ->
-      failwith
-        (Printf.sprintf "unreachable: no type associated with `%s'"
-           (Ast.node_to_str n))
+let create src : symbol_store =
+  { defs = Hashtbl.create 64; types = Hashtbl.create 64; src }
+
+let rec get_definition ss (node : Ast.node) : definition =
+  match Hashtbl.find_opt ss.defs node with
+  | Some old -> old
+  | None -> (
+      let get_definition = get_definition ss in
+      let get_type = get_type ss in
+      try
+        match node with
+        | NamedType x -> (
+            match Hashtbl.find_opt builtins x.name with
+            | Some _ -> Builtin x.name
+            | None -> (
+                match find_name_in_parents x.name (NamedType x) with
+                | Some n -> Node n
+                | None -> failwith "Error: undefined symbol"))
+        | VarExpr x -> (
+            match Hashtbl.find_opt builtins x.name with
+            | Some _ -> Builtin x.name
+            | None -> (
+                match find_name_in_parents x.name (VarExpr x) with
+                | Some n -> Node n
+                | None -> failwith "Error: undefined symbol"))
+        | DotType x -> (
+            let parent = get_definition (Ast.type_to_node x.namespace) in
+            match parent with
+            | Node (StructDecl s) -> (
+                match
+                  s.decls |> List.map Ast.decl_to_node
+                  |> find_node_with_name x.name
+                with
+                | Some (StructDecl d) -> Node (StructDecl d)
+                | Some _ -> failwith "Error: child is not a type"
+                | None -> failwith "Error: child type not found")
+            | _ -> failwith "Error: Invalid parent, expected a struct type")
+        | DotExpr x -> (
+            let obj = get_type (Ast.expr_to_node x.obj) in
+            match obj with
+            | StructType s -> (
+                match
+                  s.decls |> List.map Ast.decl_to_node
+                  |> find_node_with_name x.field
+                with
+                | Some y -> Node y
+                | None -> failwith "Error: no such declaration")
+            | _ -> failwith "Error: parent is not an object")
+        | YieldStmt _ | WhileLoop _ | ContinueStmt _ | BreakStmt _ | IfStmt _
+        | ReturnStmt _ | Invalid | Root _ | Block _ ->
+            failwith
+              (Printf.sprintf "unreachable: no definition associated with `%s'"
+                 (Ast.node_to_str node))
+        | _ -> Node node
+      with err ->
+        Error.fail_at_spot "symbol_store error" ss.src (Ast.node_loc node) err)
+
+and get_type (ss : symbol_store) (node : Ast.node) : typ =
+  match Hashtbl.find_opt ss.types node with
+  | Some old -> old
+  | None -> (
+      let get_definition = get_definition ss in
+      let get_type = get_type ss in
+      try
+        match node with
+        | FnDecl x ->
+            let ret = get_type (Ast.type_to_node x.ret) in
+            let args =
+              x.args
+              |> List.map (fun (x : Ast.argument) ->
+                     x.typ |> Ast.type_to_node |> get_type)
+            in
+            FnType { ret; args }
+        | CoDecl x ->
+            let yield = get_type (Ast.type_to_node x.yield) in
+            let args =
+              x.args
+              |> List.map (fun (x : Ast.argument) ->
+                     x.typ |> Ast.type_to_node |> get_type)
+            in
+            CoType { yield; args }
+        | StructDecl x -> StructType x
+        | LetStmt x -> get_type (Ast.type_to_node x.typ)
+        | AliasStmt x -> get_type (Ast.type_to_node x.typ)
+        | Argument x -> get_type (Ast.type_to_node x.typ)
+        | ArrayType x ->
+            let elem = get_type (Ast.type_to_node x.elem) in
+            ArrayType { elem }
+        | FnType x ->
+            let ret = get_type (Ast.type_to_node x.ret) in
+            let args = List.map Ast.type_to_node x.args |> List.map get_type in
+            FnType { ret; args }
+        | CoType x ->
+            let yield = get_type (Ast.type_to_node x.yield) in
+            let args = List.map Ast.type_to_node x.args |> List.map get_type in
+            CoType { yield; args }
+        | CoObjType x ->
+            let yield = get_type (Ast.type_to_node x.yield) in
+            CoObjType { yield }
+        | Field x -> get_type (Ast.type_to_node x.typ)
+        | BinExpr x ->
+            let lhs = get_type (Ast.expr_to_node x.lhs) in
+            let rhs = get_type (Ast.expr_to_node x.rhs) in
+            if lhs = rhs then lhs else failwith "Error: adding different types"
+        | UnaryExpr x -> (
+            let sub = get_type (Ast.expr_to_node x.sub_expr) in
+            match sub with
+            | IntType -> IntType
+            | _ -> failwith "Error: expected an int")
+        | CallExpr x -> (
+            let fn = get_type (Ast.expr_to_node x.fn) in
+            match fn with
+            | FnType fn -> fn.ret
+            | CoType co -> co.yield
+            | BuiltinFn fn ->
+                fn.typecheck
+                  (List.map (fun a -> Ast.expr_to_node a |> get_type) x.args)
+            | _ -> failwith "Error: not a callable type")
+        | IndexExpr x -> (
+            let arr = get_type (Ast.expr_to_node x.arr) in
+            match arr with
+            | ArrayType arr -> arr.elem
+            | _ -> failwith "Error: not an array type")
+        | DotExpr x -> (
+            let obj = get_type (Ast.expr_to_node x.obj) in
+            match obj with
+            | StructType s -> (
+                match
+                  s.decls |> List.map Ast.decl_to_node
+                  |> find_node_with_name x.field
+                with
+                | Some y -> get_type y
+                | None -> failwith "Error: no such field")
+            | _ -> failwith "Error: not an object")
+        | NumExpr _ -> IntType
+        | StringExpr _ -> StringType
+        | ArrayLiteral x -> (
+            match x.elems with
+            | y :: _ ->
+                let elem = get_type (Ast.expr_to_node y) in
+                ArrayType { elem }
+            | _ -> EmptyArrayType)
+        | NullLiteral _ -> NullType
+        | NewExpr x -> get_type (Ast.type_to_node x.typ)
+        | CreateExpr x -> (
+            let coro = get_type (Ast.expr_to_node x.coroutine) in
+            match coro with
+            | CoType coro -> CoObjType { yield = coro.yield }
+            | _ -> failwith "Error: creates takes a co fn as a first parameter")
+        | ResumeExpr x -> (
+            let coro = get_type (Ast.expr_to_node x.coroutine) in
+            match coro with
+            | CoObjType coro -> coro.yield
+            | _ -> failwith "Error: resume takes a coroutine")
+        | ForLoop x -> (
+            let coro = get_type (Ast.expr_to_node x.iterator) in
+            match coro with
+            | CoObjType coro -> coro.yield
+            | _ ->
+                failwith
+                  "Error: for loop takes a coroutine object as an iterator")
+        | IfResumeStmt x -> (
+            let coro = get_type (Ast.expr_to_node x.coroutine) in
+            match coro with
+            | CoObjType coro -> coro.yield
+            | _ -> failwith "Error: if resume should take a coroutine object")
+        | DotType x -> (
+            let ns = get_type (Ast.type_to_node x.namespace) in
+            match ns with
+            | StructType s -> (
+                match
+                  s.decls |> List.map Ast.decl_to_node
+                  |> find_node_with_name x.name
+                with
+                | Some (StructDecl y) -> StructType y
+                | _ -> failwith "Error: no such inner type")
+            | _ -> failwith "Error: not an object")
+        | NamedType _ | VarExpr _ -> (
+            match get_definition node with
+            | Node n -> get_type n
+            | Builtin b -> Hashtbl.find builtins b)
+        | n ->
+            failwith
+              (Printf.sprintf "unreachable: no type associated with `%s'"
+                 (Ast.node_to_str n))
+      with err ->
+        Error.fail_at_spot "symbol_store error" ss.src (Ast.node_loc node) err)
 
 let def_eql (a : definition) (b : definition) =
   match (a, b) with

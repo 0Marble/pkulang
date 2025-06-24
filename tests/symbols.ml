@@ -67,9 +67,10 @@ let simple_vars () =
   let root = Parser.parse_root src in
   let let_a = find_let "a" (Root root) in
   let a_var = find_var "a" (Root root) in
-  let def = Symbols.get_definition a_var in
+  let ss = Symbols.create src in
+  let def = Symbols.get_definition ss a_var in
   check definition "Var definition in the same scope" (Node let_a) def;
-  check typ "Has int type" IntType (Symbols.get_type a_var)
+  check typ "Has int type" IntType (Symbols.get_type ss a_var)
 
 let scoped_var () =
   let src =
@@ -81,13 +82,14 @@ let scoped_var () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let main_fn = find_fn "main" (Root root) in
   let let_a = find_let "a" main_fn in
   let a_var = find_var "a" (Root root) in
-  let def = Symbols.get_definition a_var in
+  let def = Symbols.get_definition ss a_var in
   check definition "Var definition in the same scope" (Node let_a) def;
-  check typ "Has int type" IntType (Symbols.get_type a_var)
+  check typ "Has int type" IntType (Symbols.get_type ss a_var)
 
 let var_from_outside () =
   let src =
@@ -98,12 +100,13 @@ let var_from_outside () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let let_a = find_let "a" (Root root) in
   let a_var = find_var "a" (Root root) in
-  let def = Symbols.get_definition a_var in
+  let def = Symbols.get_definition ss a_var in
   check definition "Var definition from outer scope" (Node let_a) def;
-  check typ "Has int type" IntType (Symbols.get_type a_var)
+  check typ "Has int type" IntType (Symbols.get_type ss a_var)
 
 let simple_fn () =
   let src =
@@ -114,14 +117,15 @@ let simple_fn () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let decl = find_fn "foo" (Root root) in
   let var = find_var "foo" (Root root) in
-  let def = Symbols.get_definition var in
+  let def = Symbols.get_definition ss var in
   check definition "found decl" (Node decl) def;
   check typ "has correct type"
     (FnType { args = []; ret = VoidType })
-    (Symbols.get_type var)
+    (Symbols.get_type ss var)
 
 let fn_below () =
   let src =
@@ -132,14 +136,15 @@ let fn_below () =
     fn foo() void {}
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let decl = find_fn "foo" (Root root) in
   let var = find_var "foo" (Root root) in
-  let def = Symbols.get_definition var in
+  let def = Symbols.get_definition ss var in
   check definition "found decl" (Node decl) def;
   check typ "has correct type"
     (FnType { args = []; ret = VoidType })
-    (Symbols.get_type var)
+    (Symbols.get_type ss var)
 
 let fn_with_args () =
   let src =
@@ -150,14 +155,15 @@ let fn_with_args () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let decl = find_fn "foo" (Root root) in
   let var = find_var "foo" (Root root) in
-  let def = Symbols.get_definition var in
+  let def = Symbols.get_definition ss var in
   check definition "found decl" (Node decl) def;
   check typ "has correct type"
     (FnType { args = [ IntType; StringType ]; ret = VoidType })
-    (Symbols.get_type var)
+    (Symbols.get_type ss var)
 
 let fptr () =
   let src =
@@ -167,11 +173,12 @@ let fptr () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let decl = find_let "fptr" (Root root) in
   check typ "has correct type"
     (FnType { args = [ IntType; StringType ]; ret = VoidType })
-    (Symbols.get_type decl)
+    (Symbols.get_type ss decl)
 
 let for_loop_var () =
   let src =
@@ -182,12 +189,13 @@ let for_loop_var () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let decl = find_for "x" (Root root) in
   let var = find_var "x" (Root root) in
-  let def = Symbols.get_definition var in
+  let def = Symbols.get_definition ss var in
   check definition "found decl" (Node decl) def;
-  check typ "has correct type" IntType (Symbols.get_type var)
+  check typ "has correct type" IntType (Symbols.get_type ss var)
 
 let if_resume_var () =
   let src =
@@ -198,12 +206,13 @@ let if_resume_var () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let decl = find_resume "x" (Root root) in
   let var = find_var "x" (Root root) in
-  let def = Symbols.get_definition var in
+  let def = Symbols.get_definition ss var in
   check definition "found decl" (Node decl) def;
-  check typ "has correct type" IntType (Symbols.get_type var)
+  check typ "has correct type" IntType (Symbols.get_type ss var)
 
 let struct_typ () =
   let src =
@@ -214,6 +223,7 @@ let struct_typ () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let foo_struct = find_struct "Foo" (Root root) in
   let let_stmt =
@@ -221,12 +231,12 @@ let struct_typ () =
     | LetStmt x -> x
     | _ -> failwith "unreachable"
   in
-  let def = Symbols.get_definition (Ast.type_to_node let_stmt.typ) in
+  let def = Symbols.get_definition ss (Ast.type_to_node let_stmt.typ) in
   check definition "found decl" (Node foo_struct) def;
   check typ "has correct type"
     (StructType
        (match foo_struct with StructDecl x -> x | _ -> failwith "unreachable"))
-    (Symbols.get_type (Ast.type_to_node let_stmt.typ))
+    (Symbols.get_type ss (Ast.type_to_node let_stmt.typ))
 
 let field_access () =
   let src =
@@ -238,13 +248,14 @@ let field_access () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let foo_struct = find_struct "Foo" (Root root) in
   let x_field = find_field "x" foo_struct in
   let dot = find_var "x" (Root root) |> Ast.node_parent |> Option.get in
-  let def = Symbols.get_definition dot in
+  let def = Symbols.get_definition ss dot in
   check definition "field definition" (Node x_field) def;
-  check typ "field type" IntType (Symbols.get_type dot)
+  check typ "field type" IntType (Symbols.get_type ss dot)
 
 let field_chain () =
   let src =
@@ -257,6 +268,7 @@ let field_chain () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let bar_struct = find_struct "Bar" (Root root) in
   let x_field = find_field "x" bar_struct in
@@ -264,9 +276,9 @@ let field_chain () =
     find_var "x" (Root root) |> Ast.node_parent |> Option.get |> Ast.node_parent
     |> Option.get
   in
-  let def = Symbols.get_definition dot in
+  let def = Symbols.get_definition ss dot in
   check definition "field definition" (Node x_field) def;
-  check typ "field type" IntType (Symbols.get_type dot)
+  check typ "field type" IntType (Symbols.get_type ss dot)
 
 let inner_struct () =
   let src =
@@ -283,13 +295,14 @@ let inner_struct () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let bar_struct = find_struct "Bar" (Root root) in
   let x_field = find_field "x" bar_struct in
   let dot = find_var "x" (Root root) |> Ast.node_parent |> Option.get in
-  let def = Symbols.get_definition dot in
+  let def = Symbols.get_definition ss dot in
   check definition "field definition" (Node x_field) def;
-  check typ "field type" IntType (Symbols.get_type dot)
+  check typ "field type" IntType (Symbols.get_type ss dot)
 
 let binexpr_type () =
   let src = {|
@@ -297,9 +310,10 @@ let binexpr_type () =
       println("a" + "b");
     }
   |} in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let add = Ast.find_child_of_kind BinExpr (Root root) |> Option.get in
-  check typ "\"a\"+\"b\"" StringType (Symbols.get_type add)
+  check typ "\"a\"+\"b\"" StringType (Symbols.get_type ss add)
 
 let neg_type () =
   let src = {|
@@ -307,9 +321,10 @@ let neg_type () =
       println(-10);
     }
   |} in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let expr = Ast.find_child_of_kind UnaryExpr (Root root) |> Option.get in
-  check typ "-10" IntType (Symbols.get_type expr)
+  check typ "-10" IntType (Symbols.get_type ss expr)
 
 let call_type () =
   let src =
@@ -320,9 +335,10 @@ let call_type () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let expr = Ast.find_child_of_kind CallExpr (Root root) |> Option.get in
-  check typ "foo()" IntType (Symbols.get_type expr)
+  check typ "foo()" IntType (Symbols.get_type ss expr)
 
 let index_type () =
   let src =
@@ -333,9 +349,10 @@ let index_type () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let expr = Ast.find_child_of_kind IndexExpr (Root root) |> Option.get in
-  check typ "a[0]" IntType (Symbols.get_type expr)
+  check typ "a[0]" IntType (Symbols.get_type ss expr)
 
 let field_of_result () =
   let src =
@@ -347,12 +364,13 @@ let field_of_result () =
     }
   |}
   in
+  let ss = Symbols.create src in
   let root = Parser.parse_root src in
   let expr = Ast.find_child_of_kind DotExpr (Root root) |> Option.get in
   let decl = find_field "x" (Root root) in
-  let def = Symbols.get_definition expr in
+  let def = Symbols.get_definition ss expr in
   check definition "make_foo().x" (Node decl) def;
-  check typ "make_foo().x" IntType (Symbols.get_type expr)
+  check typ "make_foo().x" IntType (Symbols.get_type ss expr)
 
 let () =
   run "Symbols"
